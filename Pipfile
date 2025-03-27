@@ -8,6 +8,8 @@ django = "*"
 python-dotenv = "*"
 openai = "*"
 requests = "*"
+drf-yasg = "*"
+djangorestframework = "*"
 
 [dev-packages]
 
