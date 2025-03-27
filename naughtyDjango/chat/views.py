@@ -63,7 +63,7 @@ def chat_with_gpt(request):
 # 사용자별 대화 이력 조회
 @swagger_auto_schema(
     method="get",
-    operation_description="특정 사용자의 대화 이력을 조회합니다.",
+    operation_description="사용자의 대화 이력을 조회합니다.",
     responses={200: openapi.Response("성공", openapi.Schema(type=openapi.TYPE_OBJECT, properties={
         "history": openapi.Schema(type=openapi.TYPE_ARRAY, items=openapi.Schema(
             type=openapi.TYPE_OBJECT,
@@ -91,7 +91,7 @@ def get_chat_history(request, username):
 # 투자 프로필 저장
 @swagger_auto_schema(
     method="post",
-    operation_description="사용자의 투자 프로필을 저장합니다.",
+    operation_description="사용자의 투자 정보를 데이터베이스에 저장합니다.",
     request_body=openapi.Schema(
         type=openapi.TYPE_OBJECT,
         properties={
