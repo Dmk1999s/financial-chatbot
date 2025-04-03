@@ -1,5 +1,5 @@
 """
-ASGI config for naughtyDjango project.
+ASGI global for naughtyDjango project.
 
 It exposes the ASGI callable as a module-level variable named ``application``.
 

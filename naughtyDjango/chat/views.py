@@ -6,6 +6,9 @@ from drf_yasg import openapi
 from rest_framework.decorators import api_view
 from .models import ChatMessage, InvestmentProfile
 from openai import OpenAI
+from naughtyDjango.utils.custom_response import CustomResponse
+from naughtyDjango.constants.error_codes import GeneralErrorCode
+from naughtyDjango.constants.success_codes import GeneralSuccessCode
 import json
 import os
 
@@ -27,10 +30,18 @@ fine_tuned_model = "ft:gpt-3.5-turbo-0125:personal::BDpYRjbn"
         },
         required=["message"],
     ),
-    responses={200: openapi.Response("성공", openapi.Schema(type=openapi.TYPE_OBJECT, properties={
-        "response": openapi.Schema(type=openapi.TYPE_STRING, description="GPT의 응답")
-    }))},
+    responses={
+        200: openapi.Response(
+            "성공",
+            openapi.Schema(
+                type=openapi.TYPE_OBJECT,
+                properties={
+                    "isSuccess": openapi.Schema(type=openapi.TYPE_BOOLEAN, description="성공 여부"),
+                    "code": openapi.Schema(type=openapi.TYPE_STRING, description="응답 코드"),
+                    "message": openapi.Schema(type=openapi.TYPE_STRING, description="응답 메시지"),
+                    "result": openapi.Schema(type=openapi.TYPE_STRING, description="GPT의 응답"),}))}
 )
+
 @csrf_exempt
 @api_view(["POST"])
 def chat_with_gpt(request):
@@ -55,38 +66,68 @@ def chat_with_gpt(request):
         # GPT 응답 저장
         ChatMessage.objects.create(username=username, role="assistant", message=gpt_reply)
 
-        return JsonResponse({"response": gpt_reply})
+        return CustomResponse(
+            is_success=True,
+            code=GeneralSuccessCode.OK[0],
+            message=GeneralSuccessCode.OK[1],
+            result={"response": gpt_reply},
+            status=GeneralSuccessCode.OK[2]
+        )
 
     except Exception as e:
-        return JsonResponse({"error": str(e)}, status=500)
+        return CustomResponse(
+            is_success=False,
+            code=GeneralErrorCode.INTERNAL_SERVER_ERROR[0],
+            message=GeneralErrorCode.INTERNAL_SERVER_ERROR[1],
+            result={"error": str(e)},
+            status=GeneralErrorCode.INTERNAL_SERVER_ERROR[2]
+        )
 
 # 사용자별 대화 이력 조회
 @swagger_auto_schema(
     method="get",
     operation_description="사용자의 대화 이력을 조회합니다.",
     responses={200: openapi.Response("성공", openapi.Schema(type=openapi.TYPE_OBJECT, properties={
-        "history": openapi.Schema(type=openapi.TYPE_ARRAY, items=openapi.Schema(
-            type=openapi.TYPE_OBJECT,
-            properties={
-                "role": openapi.Schema(type=openapi.TYPE_STRING, description="메시지 역할 (user/assistant)"),
-                "message": openapi.Schema(type=openapi.TYPE_STRING, description="대화 메시지 내용"),
-                "timestamp": openapi.Schema(type=openapi.TYPE_STRING, description="대화 발생 시간"),
-            }
-        ))
-    }))},
-)
+        "isSuccess": openapi.Schema(type=openapi.TYPE_BOOLEAN, description="성공 여부"),
+        "code": openapi.Schema(type=openapi.TYPE_STRING, description="응답 코드"),
+        "message": openapi.Schema(type=openapi.TYPE_STRING, description="응답 메시지"),
+        "result": openapi.Schema(
+            type=openapi.TYPE_ARRAY,
+            description="채팅 내역 리스트",
+            items=openapi.Schema(
+                type=openapi.TYPE_OBJECT,
+                properties={
+                    "role": openapi.Schema(type=openapi.TYPE_STRING, description="메시지의 역할 (user/assistant)"),
+                    "message": openapi.Schema(type=openapi.TYPE_STRING, description="채팅 메시지 내용"),
+                    "timestamp": openapi.Schema(type=openapi.TYPE_STRING, format="date-time", description="메시지 타임스탬프"),
+                })),})),
+
+            500: openapi.Response(
+                "서버 오류",
+                openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        "isSuccess": openapi.Schema(type=openapi.TYPE_BOOLEAN, description="성공 여부 (항상 false)"),
+                        "code": openapi.Schema(type=openapi.TYPE_STRING, description="에러 코드"),
+                        "message": openapi.Schema(type=openapi.TYPE_STRING, description="에러 메시지"),
+                        "result": openapi.Schema(type=openapi.TYPE_STRING, description="에러 발생 시 결과 없음"),
+})),})
+@csrf_exempt
 @api_view(["GET"])
 def get_chat_history(request, username):
-    chats = ChatMessage.objects.filter(username=username).order_by("timestamp")
-    data = [
-        {
-            "role": chat.role,
-            "message": chat.message,
-            "timestamp": chat.timestamp
-        }
-        for chat in chats
-    ]
-    return JsonResponse({"history": data})
+    try:
+        chats = ChatMessage.objects.filter(username=username).order_by("timestamp")
+        data = [
+            {
+                "role": chat.role,
+                "message": chat.message,
+                "timestamp": chat.timestamp
+            }
+            for chat in chats
+        ]
+        return JsonResponse(CustomResponse.ok(data).to_dict(), status=200)
+    except Exception as e:
+        return JsonResponse(CustomResponse.onFailure("COMMON500", str(e)).to_dict(), status=500)
 
 # 투자 프로필 저장
 @swagger_auto_schema(
@@ -127,7 +168,6 @@ def save_investment_profile(request):
         user_id = data.get("user_id")
         investment_profile = data.get("investment_profile", {})
 
-        # InvestmentProfile 모델에 데이터 저장
         InvestmentProfile.objects.create(
             session_id=session_id,
             user_id=user_id,
@@ -141,6 +181,7 @@ def save_investment_profile(request):
             expected_loss=investment_profile.get("expected_loss"),
             investment_purpose=investment_profile.get("investment_purpose"),
         )
-        return JsonResponse({"message": "Investment profile successfully saved"}, status=200)
+        return JsonResponse(CustomResponse.ok("Investment profile successfully saved").to_dict(), status=200)
+
     except Exception as e:
-        return JsonResponse({"error": str(e)}, status=500)
+        return JsonResponse(CustomResponse.onFailure("COMMON500", str(e)).to_dict(), status=500)

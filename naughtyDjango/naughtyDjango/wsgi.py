@@ -1,5 +1,5 @@
 """
-WSGI config for naughtyDjango project.
+WSGI global for naughtyDjango project.
 
 It exposes the WSGI callable as a module-level variable named ``application``.
 
