@@ -125,9 +125,23 @@ def get_chat_history(request, username):
             }
             for chat in chats
         ]
-        return JsonResponse(CustomResponse.ok(data).to_dict(), status=200)
+        return CustomResponse(
+            is_success=True,
+            code=GeneralSuccessCode.OK[0],
+            message=GeneralSuccessCode.OK[1],
+            result={"response": gpt_reply},
+            status=GeneralSuccessCode.OK[2]
+        )
+
     except Exception as e:
-        return JsonResponse(CustomResponse.onFailure("COMMON500", str(e)).to_dict(), status=500)
+        return CustomResponse(
+            is_success=False,
+            code=GeneralErrorCode.INTERNAL_SERVER_ERROR[0],
+            message=GeneralErrorCode.INTERNAL_SERVER_ERROR[1],
+            result={"error": str(e)},
+            status=GeneralErrorCode.INTERNAL_SERVER_ERROR[2]
+        )
+
 
 # 투자 프로필 저장
 @swagger_auto_schema(
@@ -169,7 +183,7 @@ def save_investment_profile(request):
         investment_profile = data.get("investment_profile", {})
 
         InvestmentProfile.objects.create(
-            session_id=session_id,
+            #session_id=session_id,
             user_id=user_id,
             risk_tolerance=investment_profile.get("risk_tolerance"),
             age=investment_profile.get("age"),
@@ -181,7 +195,19 @@ def save_investment_profile(request):
             expected_loss=investment_profile.get("expected_loss"),
             investment_purpose=investment_profile.get("investment_purpose"),
         )
-        return JsonResponse(CustomResponse.ok("Investment profile successfully saved").to_dict(), status=200)
+        return CustomResponse(
+            is_success=True,
+            code=GeneralSuccessCode.OK[0],
+            message=GeneralSuccessCode.OK[1],
+            result={"response": GeneralSuccessCode.OK[1]},
+            status=GeneralSuccessCode.OK[2]
+        )
 
     except Exception as e:
-        return JsonResponse(CustomResponse.onFailure("COMMON500", str(e)).to_dict(), status=500)
+        return CustomResponse(
+            is_success=False,
+            code=GeneralErrorCode.INTERNAL_SERVER_ERROR[0],
+            message=GeneralErrorCode.INTERNAL_SERVER_ERROR[1],
+            result={"error": str(e)},
+            status=GeneralErrorCode.INTERNAL_SERVER_ERROR[2]
+        )
