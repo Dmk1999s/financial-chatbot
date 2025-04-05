@@ -9,14 +9,14 @@ from openai import OpenAI
 from naughtyDjango.utils.custom_response import CustomResponse
 from naughtyDjango.constants.error_codes import GeneralErrorCode
 from naughtyDjango.constants.success_codes import GeneralSuccessCode
+from langchain_community.chat_message_histories import ChatMessageHistory
+from langchain_core.chat_history import BaseChatMessageHistory
+from langchain_core.runnables.history import RunnableWithMessageHistory
+from chat.gpt_service import handle_chat, get_session_id
+import uuid
 import json
-import os
 
-load_dotenv()
-openai_api_key = os.getenv("OPENAI_API_KEY")
-client = OpenAI(api_key=openai_api_key)
 
-fine_tuned_model = "ft:gpt-3.5-turbo-0125:personal::BDpYRjbn"
 
 # swagger설정 - 채팅
 @swagger_auto_schema(
@@ -26,6 +26,7 @@ fine_tuned_model = "ft:gpt-3.5-turbo-0125:personal::BDpYRjbn"
         type=openapi.TYPE_OBJECT,
         properties={
             "username": openapi.Schema(type=openapi.TYPE_STRING, description="사용자 이름"),
+            "session_id": openapi.Schema(type=openapi.TYPE_STRING, description="세션 아이디"),
             "message": openapi.Schema(type=openapi.TYPE_STRING, description="사용자의 입력 메시지"),
         },
         required=["message"],
@@ -39,49 +40,39 @@ fine_tuned_model = "ft:gpt-3.5-turbo-0125:personal::BDpYRjbn"
                     "isSuccess": openapi.Schema(type=openapi.TYPE_BOOLEAN, description="성공 여부"),
                     "code": openapi.Schema(type=openapi.TYPE_STRING, description="응답 코드"),
                     "message": openapi.Schema(type=openapi.TYPE_STRING, description="응답 메시지"),
-                    "result": openapi.Schema(type=openapi.TYPE_STRING, description="GPT의 응답"),}))}
-)
+                "result": openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        "session_id": openapi.Schema(type=openapi.TYPE_STRING, description="세션 ID"),
+                        "response": openapi.Schema(type=openapi.TYPE_STRING, description="GPT의 응답"),},),},))})
 
-@csrf_exempt
 @api_view(["POST"])
+@csrf_exempt
 def chat_with_gpt(request):
-    data = json.loads(request.body)
-    username = data.get("username", "anonymous")  # 기본값: anonymous
-    user_input = data.get("message")
-
     try:
-        # 사용자 메시지 저장
-        ChatMessage.objects.create(username=username, role="user", message=user_input)
+        data = json.loads(request.body)
+        user_input = data.get("message")
+        session_id = get_session_id(data)
 
-        # GPT 응답 생성
-        response = client.chat.completions.create(
-            model=fine_tuned_model,
-            messages=[
-                {"role": "system", "content": "You are a helpful assistant."},
-                {"role": "user", "content": user_input}
-            ]
-        )
-        gpt_reply = response.choices[0].message.content
+        gpt_reply, session_id = handle_chat(user_input, session_id)
 
-        # GPT 응답 저장
-        ChatMessage.objects.create(username=username, role="assistant", message=gpt_reply)
-
-        return CustomResponse(
-            is_success=True,
-            code=GeneralSuccessCode.OK[0],
-            message=GeneralSuccessCode.OK[1],
-            result={"response": gpt_reply},
-            status=GeneralSuccessCode.OK[2]
-        )
+        return JsonResponse({
+            "isSuccess": True,
+            "code": "OK",
+            "message": "대화 성공",
+            "result": {
+                "session_id": session_id,
+                "response": gpt_reply
+            }
+        }, status=200)
 
     except Exception as e:
-        return CustomResponse(
-            is_success=False,
-            code=GeneralErrorCode.INTERNAL_SERVER_ERROR[0],
-            message=GeneralErrorCode.INTERNAL_SERVER_ERROR[1],
-            result={"error": str(e)},
-            status=GeneralErrorCode.INTERNAL_SERVER_ERROR[2]
-        )
+        return JsonResponse({
+            "isSuccess": False,
+            "code": "COMMON500",
+            "message": "서버 오류 발생",
+            "result": {"error": str(e)}
+        }, status=500)
 
 # 사용자별 대화 이력 조회
 @swagger_auto_schema(

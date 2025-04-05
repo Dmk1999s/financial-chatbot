@@ -10,6 +10,7 @@ openai = "*"
 requests = "*"
 drf-yasg = "*"
 djangorestframework = "*"
+langchain-community = "*"
 
 [dev-packages]
 
