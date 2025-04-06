@@ -4,7 +4,7 @@ from django.views.decorators.csrf import csrf_exempt
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 from rest_framework.decorators import api_view
-from .models import ChatMessage, InvestmentProfile
+from chat.models import ChatMessage, InvestmentProfile
 from openai import OpenAI
 from naughtyDjango.utils.custom_response import CustomResponse
 from naughtyDjango.constants.error_codes import GeneralErrorCode
@@ -12,11 +12,11 @@ from naughtyDjango.constants.success_codes import GeneralSuccessCode
 from langchain_community.chat_message_histories import ChatMessageHistory
 from langchain_core.chat_history import BaseChatMessageHistory
 from langchain_core.runnables.history import RunnableWithMessageHistory
-from chat.gpt_service import handle_chat, get_session_id
+from chat.gpt_service import handle_chat, get_session_id, extract_json_from_response
 import uuid
 import json
 
-
+print("✅ DEBUG: InvestmentProfile =", InvestmentProfile)
 
 # swagger설정 - 채팅
 @swagger_auto_schema(
@@ -52,9 +52,13 @@ def chat_with_gpt(request):
     try:
         data = json.loads(request.body)
         user_input = data.get("message")
+        user_id = data.get("user_id")
         session_id = get_session_id(data)
 
-        gpt_reply, session_id = handle_chat(user_input, session_id)
+        gpt_reply, session_id = handle_chat(user_input, session_id, user_id)
+
+        # GPT 응답에서 JSON 파싱 시도
+        extracted_data = extract_json_from_response(gpt_reply)
 
         return JsonResponse({
             "isSuccess": True,
@@ -62,7 +66,8 @@ def chat_with_gpt(request):
             "message": "대화 성공",
             "result": {
                 "session_id": session_id,
-                "response": gpt_reply
+                "response": gpt_reply,
+                "parsed": extracted_data
             }
         }, status=200)
 
