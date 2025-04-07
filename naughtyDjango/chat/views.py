@@ -66,8 +66,7 @@ def chat_with_gpt(request):
             "message": "대화 성공",
             "result": {
                 "session_id": session_id,
-                "response": gpt_reply,
-                "parsed": extracted_data
+                "response": gpt_reply
             }
         }, status=200)
 
