@@ -24,6 +24,10 @@ class InvestmentProfile(models.Model):
     expected_return = models.CharField(max_length=50, null=True, blank=True)
     expected_loss = models.CharField(max_length=50, null=True, blank=True)
     investment_purpose = models.CharField(max_length=255, null=True, blank=True)
+    asset_allocation_type = models.IntegerField(null=True, blank=True)
+    value_growth = models.IntegerField(null=True, blank=True)
+    risk_acceptance_level = models.IntegerField(null=True, blank=True)
+    investment_concern = models.CharField(max_length=255, null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
