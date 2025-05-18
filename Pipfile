@@ -11,6 +11,11 @@ requests = "*"
 drf-yasg = "*"
 djangorestframework = "*"
 langchain-community = "*"
+django-environ = "*"
+mysqlclient = "*"
+pymysql = "*"
+tiktoken = "*"
+faiss-cpu = "*"
 
 [dev-packages]
 

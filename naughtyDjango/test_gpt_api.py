@@ -78,7 +78,7 @@ def chat_loop():
     사용자로부터 입력을 받아 /api/chat/ 엔드포인트에 메시지를 반복적으로 전송하고,
     응답을 출력하며 동시에 GPT API를 사용해 입력 메시지에서 투자 관련 속성을 분류합니다.
     """
-    chat_url = "http://127.0.0.1:8000/chats/"  # 챗봇 응답 API
+    chat_url = "http://127.0.0.1:8000/recommend/"  # RAG 추천 API
     username = "dongminkim"
 
     print("=== 챗봇과 대화하기 ===")
@@ -95,17 +95,16 @@ def chat_loop():
         clean_message = message.encode('utf-8', 'ignore').decode('utf-8')
 
         # 챗봇 대화 API 호출
-        data = {
-            "username": username,
-            "message": clean_message
-        }
+        # 추천 API는 query 필드 하나만 필요합니다.
+        payload = {"query": clean_message}
         try:
-            response = requests.post(chat_url, json=data)
+            response = requests.post(chat_url, json=payload)
+
             if response.status_code == 200:
-                chat_result = response.json()
-                print("챗봇 응답:", chat_result)
+                rec = response.json()
+                print("추천 결과:", rec["recommendation"])
             else:
-                print(f"챗봇 API 오류: {response.status_code}, {response.text}")
+                print(f"추천 API 오류: {response.status_code}, {response.text}")
         except requests.exceptions.RequestException as e:
             print("챗봇 API 요청 중 오류가 발생했습니다:", e)
             continue
