@@ -109,14 +109,19 @@ def chat_loop():
             print("챗봇 API 요청 중 오류가 발생했습니다:", e)
             continue
 
-        # 사용자의 입력에서 투자 관련 속성 분류
         profile = classify_user_profile(clean_message)
         print("추출된 사용자 속성:", profile)
-
-        # 조건에 따라, 예를 들어 회원가입 후 최초 한번 속성을 저장한다면 저장 API를 호출할 수 있음.
-        # 아래는 저장 API 호출 예시.
-        save_investment_profile(profile, user_id="unique_user_id")
-
+        save_url = "http://127.0.0.1:8000/datas/"
+        payload = {
+            "session_id": str(uuid.uuid4()),
+            "user_id": "unique_user_id",
+            "investment_profile": profile
+        }
+        resp = requests.post(save_url, json=payload)
+        if resp.status_code == 200:
+            print("API를 통한 저장 성공:", resp.json())
+        else:
+            print("API 저장 오류:", resp.status_code, resp.text)
 
 if __name__ == "__main__":
     chat_loop()
