@@ -4,7 +4,7 @@ from django.views.decorators.csrf import csrf_exempt
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 from rest_framework.decorators import api_view
-from chat.models import ChatMessage, InvestmentProfile
+from naughtyDjango.models import User
 from openai import OpenAI
 from naughtyDjango.utils.custom_response import CustomResponse
 from naughtyDjango.constants.error_codes import GeneralErrorCode
@@ -16,7 +16,6 @@ from chat.gpt_service import handle_chat, get_session_id, extract_json_from_resp
 import uuid
 import json
 
-print("✅ DEBUG: InvestmentProfile =", InvestmentProfile)
 
 # swagger설정 - 채팅
 @swagger_auto_schema(
@@ -25,7 +24,7 @@ print("✅ DEBUG: InvestmentProfile =", InvestmentProfile)
     request_body=openapi.Schema(
         type=openapi.TYPE_OBJECT,
         properties={
-            "username": openapi.Schema(type=openapi.TYPE_STRING, description="사용자 이름"),
+            "id": openapi.Schema(type=openapi.TYPE_STRING, description="사용자 아이디"),
             "session_id": openapi.Schema(type=openapi.TYPE_STRING, description="세션 아이디"),
             "message": openapi.Schema(type=openapi.TYPE_STRING, description="사용자의 입력 메시지"),
         },
@@ -48,12 +47,13 @@ print("✅ DEBUG: InvestmentProfile =", InvestmentProfile)
 
 @api_view(["POST"])
 @csrf_exempt
+
 def chat_with_gpt(request):
     try:
         data = json.loads(request.body)
-        user_input = data.get("message")
-        user_id = data.get("user_id")
+        user_id = data.get("id")
         session_id = get_session_id(data)
+        user_input = data.get("message")
 
         gpt_reply, session_id = handle_chat(user_input, session_id, user_id)
 
@@ -109,9 +109,9 @@ def chat_with_gpt(request):
 })),})
 @csrf_exempt
 @api_view(["GET"])
-def get_chat_history(request, username):
+def get_chat_history(request, id):
     try:
-        chats = ChatMessage.objects.filter(username=username).order_by("timestamp")
+        chats = User.objects.filter(id=id).order_by("timestamp")
         data = [
             {
                 "role": chat.role,
@@ -174,12 +174,12 @@ def save_investment_profile(request):
     try:
         data = json.loads(request.body.decode("utf-8"))
         session_id = data.get("session_id")
-        user_id = data.get("user_id")
+        id = data.get("id")
         investment_profile = data.get("investment_profile", {})
 
-        InvestmentProfile.objects.create(
-            #session_id=session_id,
-            user_id=user_id,
+        User.objects.create(
+            session_id=session_id,
+            id=id,
             risk_tolerance=investment_profile.get("risk_tolerance"),
             age=investment_profile.get("age"),
             income_stability=investment_profile.get("income_stability"),
