@@ -8,6 +8,8 @@ from rest_framework.decorators import api_view
 from chat.rag.financial_product_rag import answer_financial_question
 
 from chat.models import ChatMessage, InvestmentProfile
+from naughtyDjango.models import User
+from openai import OpenAI
 from naughtyDjango.utils.custom_response import CustomResponse
 from naughtyDjango.constants.error_codes import GeneralErrorCode
 from naughtyDjango.constants.success_codes import GeneralSuccessCode
@@ -27,7 +29,7 @@ print("✅ DEBUG: InvestmentProfile =", InvestmentProfile)
     request_body=openapi.Schema(
         type=openapi.TYPE_OBJECT,
         properties={
-            "username": openapi.Schema(type=openapi.TYPE_STRING, description="사용자 이름"),
+            "id": openapi.Schema(type=openapi.TYPE_STRING, description="사용자 아이디"),
             "session_id": openapi.Schema(type=openapi.TYPE_STRING, description="세션 아이디"),
             "message": openapi.Schema(type=openapi.TYPE_STRING, description="사용자의 입력 메시지"),
         },
@@ -56,12 +58,13 @@ print("✅ DEBUG: InvestmentProfile =", InvestmentProfile)
 )
 @api_view(["POST"])
 @csrf_exempt
+
 def chat_with_gpt(request):
     try:
         data = json.loads(request.body)
-        user_input = data.get("message")
-        user_id = data.get("user_id")
+        user_id = data.get("id")
         session_id = get_session_id(data)
+        user_input = data.get("message")
 
         gpt_reply, session_id = handle_chat(user_input, session_id, user_id)
         extracted_data = extract_json_from_response(gpt_reply)
@@ -112,12 +115,16 @@ def chat_with_gpt(request):
     },
 )
 @api_view(["GET"])
-@csrf_exempt
-def get_chat_history(request, username):
+def get_chat_history(request, id):
     try:
-        chats = ChatMessage.objects.filter(username=username).order_by("timestamp")
-        history = [
-            {"role": c.role, "message": c.message, "timestamp": c.timestamp} for c in chats
+        chats = User.objects.filter(id=id).order_by("timestamp")
+        data = [
+            {
+                "role": chat.role,
+                "message": chat.message,
+                "timestamp": chat.timestamp
+            }
+            for chat in chats
         ]
         return CustomResponse(
             is_success=True,
@@ -168,19 +175,23 @@ def get_chat_history(request, username):
 @csrf_exempt
 def save_investment_profile(request):
     try:
-        data = json.loads(request.body)
-        profile = data.get("investment_profile", {})
-        InvestmentProfile.objects.create(
-            user_id=data.get("user_id"),
-            risk_tolerance=profile.get("risk_tolerance"),
-            age=profile.get("age"),
-            income_stability=profile.get("income_stability"),
-            income_sources=profile.get("income_sources"),
-            monthly_income=profile.get("monthly_income"),
-            investment_horizon=profile.get("investment_horizon"),
-            expected_return=profile.get("expected_return"),
-            expected_loss=profile.get("expected_loss"),
-            investment_purpose=profile.get("investment_purpose"),
+        data = json.loads(request.body.decode("utf-8"))
+        session_id = data.get("session_id")
+        id = data.get("id")
+        investment_profile = data.get("investment_profile", {})
+
+        User.objects.create(
+            session_id=session_id,
+            id=id,
+            risk_tolerance=investment_profile.get("risk_tolerance"),
+            age=investment_profile.get("age"),
+            income_stability=investment_profile.get("income_stability"),
+            income_sources=investment_profile.get("income_sources"),
+            monthly_income=investment_profile.get("monthly_income"),
+            investment_horizon=investment_profile.get("investment_horizon"),
+            expected_return=investment_profile.get("expected_return"),
+            expected_loss=investment_profile.get("expected_loss"),
+            investment_purpose=investment_profile.get("investment_purpose"),
         )
         return CustomResponse(
             is_success=True,
