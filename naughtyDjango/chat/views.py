@@ -7,7 +7,6 @@ from drf_yasg import openapi
 from rest_framework.decorators import api_view
 from chat.rag.financial_product_rag import answer_financial_question
 
-from chat.models import ChatMessage, InvestmentProfile
 from naughtyDjango.models import User
 from openai import OpenAI
 from naughtyDjango.utils.custom_response import CustomResponse
@@ -19,8 +18,6 @@ import json
 
 # 환경변수 로드 (OpenAI 등)
 load_dotenv()
-
-print("✅ DEBUG: InvestmentProfile =", InvestmentProfile)
 
 # ===== GPT 채팅 엔드포인트 =====
 @swagger_auto_schema(
