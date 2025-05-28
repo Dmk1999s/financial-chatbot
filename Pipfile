@@ -16,6 +16,8 @@ mysqlclient = "*"
 pymysql = "*"
 tiktoken = "*"
 faiss-cpu = "*"
+utils = "*"
+constants = "*"
 
 [dev-packages]
 
