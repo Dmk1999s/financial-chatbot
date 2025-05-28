@@ -1,3 +1,5 @@
+# chat/financial_product_rag.py
+
 import os
 from pathlib import Path
 from dotenv import load_dotenv
