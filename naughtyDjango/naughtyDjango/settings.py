@@ -49,12 +49,18 @@ INSTALLED_APPS = [
     'django.contrib.contenttypes',
     #'django.contrib.sessions',
     #'django.contrib.messages',
-    #'django.contrib.staticfiles',
+    'django.contrib.staticfiles',
     'chat',
     'drf_yasg',
     #'rest_framework', #djangorestframework
     'naughtyDjango',
 ]
+
+REST_FRAMEWORK = {
+    'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.IsAuthenticated',
+    ],
+}
 
 
 MIDDLEWARE = [
@@ -153,7 +159,7 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.1/howto/static-files/
 
-STATIC_URL = 'static/'
+STATIC_URL = '/static/'
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field
@@ -167,6 +173,12 @@ env = environ.Env()
 environ.Env.read_env(os.path.join(BASE_DIR, '.env'))
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+
+# 개발용이라면 (로컬에서)
+STATICFILES_DIRS = [
+    BASE_DIR / 'static',
+]
+
 
 STATIC_ROOT = "/home/app/web/static"
 MEDIA_ROOT = "/home/app/web/media"
