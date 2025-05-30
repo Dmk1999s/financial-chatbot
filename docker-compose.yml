@@ -28,7 +28,7 @@ services:
       DATABASE_PASSWORD: mysql
       DATABASE_PORT: 3306
       DATABASE_HOST: db
-      DJANGO_SETTINGS_MODULE: django-rest-framework-14th.settings.dev # dev.py > .env 파일에 있는 값들을 환경변수로 설정
+      DJANGO_SETTINGS_MODULE: naughtyDjango.naughtyDjango.settings.py
     restart: always
     ports:
       - "8000:8000"
