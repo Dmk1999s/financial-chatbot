@@ -5,7 +5,7 @@ services:
     container_name: web
     build:
       context: ./
-      dockerfile: docker-compose.prod.yml # "Dockerfile"이 아니라 뒤에 prod가 붙기 때문에 명시적으로 작성
+      dockerfile: Dockerfile.prod # "Dockerfile"이 아니라 뒤에 prod가 붙기 때문에 명시적으로 작성
     command: gunicorn naughtyDjango.wsgi:application --bind 0.0.0.0:8000 # 실제 서버에서는 gunicorn으로 웹서버와 장고를 연결해준다
     env_file:
       - .env # .github/workflows/deploy.yml에서 만든 env 파일에 의존

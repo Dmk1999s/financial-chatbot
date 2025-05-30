@@ -166,3 +166,6 @@ env = environ.Env()
 environ.Env.read_env(os.path.join(BASE_DIR, '.env'))
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+
+STATIC_ROOT = "/home/app/web/static"
+MEDIA_ROOT = "/home/app/web/media"
