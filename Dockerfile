@@ -1,4 +1,4 @@
-FROM python:3.9.6-alpine
+FROM python:3.9.6-slim
 ENV PYTHONUNBUFFERED 1
 
 RUN mkdir /app
@@ -13,6 +13,12 @@ RUN apk update && apk add python3 python3-dev mariadb-dev build-base && pip3 ins
 # our installed requirements rather than reinstall them on every build
 COPY requirements.txt /app/requirements.txt
 RUN pip install -r requirements.txt
+
+RUN apt-get update && apt-get install -y \
+    default-libmysqlclient-dev \
+    build-essential \
+    gcc \
+    python3-dev
 
 # Now copy in our code, and run it
 COPY . /app/
