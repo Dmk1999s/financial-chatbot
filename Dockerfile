@@ -19,7 +19,11 @@ WORKDIR /app
 
 # requirements 먼저 복사하고 설치 (캐시 최적화)
 COPY requirements.txt /app/requirements.txt
+
+RUN sudo apt-get install libmysqlclient-dev -y
+
 RUN pip install --upgrade pip && pip install -r requirements.txt
+
 
 # 코드 복사
 COPY . /app/
