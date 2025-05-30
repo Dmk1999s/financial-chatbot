@@ -1,13 +1,10 @@
 FROM python:3.9.6-slim
 
 # 시스템 패키지 설치
-RUN apt-get update && apt-get install -y \
-    default-libmysqlclient-dev \
-    libmysqlclient-dev \
-    build-essential \
-    gcc \
-    python3-dev \
-    && rm -rf /var/lib/apt/lists/*
+RUN apt-get update
+RUN apt-get install -y gcc
+RUN apt-get install -y default-libmysqlclient-dev
+RUN apt-get update && apt-get install -y pkg-config
 
 # Python 출력 버퍼링 제거
 ENV PYTHONUNBUFFERED 1

@@ -1,22 +1,24 @@
+###########
 # BUILDER #
 ###########
 
-# pull official base image
 FROM python:3.9-slim as builder
 
-# set work directory
 WORKDIR /usr/src/app
 
-# set environment variables
 ENV PYTHONDONTWRITEBYTECODE 1
 ENV PYTHONUNBUFFERED 1
 
-# install mysqlclient dependencies
+# build dependencies for mysqlclient
 RUN apt-get update \
-    && apt-get install -y default-libmysqlclient-dev libmysqlclient-dev gcc python3-dev \
-    && rm -rf /var/lib/apt/lists/*
+ && apt-get install -y \
+    gcc \
+    default-libmysqlclient-dev \
+    libmariadb-dev-compat \
+    libmariadb-dev \
+    pkg-config \
+ && rm -rf /var/lib/apt/lists/*
 
-# install dependencies
 COPY ./requirements.txt .
 RUN pip wheel --no-cache-dir --no-deps --wheel-dir /usr/src/app/wheels -r requirements.txt
 
@@ -25,38 +27,26 @@ RUN pip wheel --no-cache-dir --no-deps --wheel-dir /usr/src/app/wheels -r requir
 # FINAL #
 #########
 
-# pull official base image
 FROM python:3.9-slim
 
-# create directory for the app user
 RUN mkdir -p /home/app
-
-# create the app user
 RUN addgroup --system app && adduser --system --ingroup app app
 
-# create the appropriate directories
 ENV HOME=/home/app
 ENV APP_HOME=/home/app/web
 RUN mkdir -p $APP_HOME/static $APP_HOME/media
 WORKDIR $APP_HOME
 
-# install runtime dependencies
-RUN apt-get update && apt-get install -y libmysqlclient-dev \
+# runtime에 필요한 라이브러리만 설치
+RUN apt-get update && apt-get install -y libmariadb3 \
     && rm -rf /var/lib/apt/lists/*
 
-# copy python dependencies from builder
 COPY --from=builder /usr/src/app/wheels /wheels
 COPY --from=builder /usr/src/app/requirements.txt .
 RUN pip install --no-cache-dir /wheels/*
 
-# copy entrypoint
 COPY ./config/docker/entrypoint.prod.sh $APP_HOME
-
-# copy project files
 COPY . $APP_HOME
-
-# chown all the files to the app user
 RUN chown -R app:app $APP_HOME
 
-# switch to app user
 USER app
