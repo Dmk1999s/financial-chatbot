@@ -29,7 +29,6 @@ RUN pip wheel --no-cache-dir --no-deps --wheel-dir /usr/src/app/wheels -r requir
 
 FROM python:3.9-slim
 
-RUN chmod +x /home/app/entrypoint.prod.sh
 
 # 디렉토리 및 사용자 설정
 RUN mkdir -p /home/app
@@ -51,7 +50,7 @@ RUN pip install --no-cache-dir /wheels/*
 # entrypoint 및 앱 코드 복사
 COPY . $APP_HOME
 COPY ./config/docker/entrypoint.prod.sh $APP_HOME
-
+RUN chmod +x /home/app/entrypoint.prod.sh
 # 권한 설정
 RUN chown -R app:app $APP_HOME
 USER app
