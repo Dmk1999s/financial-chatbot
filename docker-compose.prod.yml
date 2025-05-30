@@ -16,7 +16,7 @@ services:
       - 8000
     entrypoint:
       - sh
-      - config/docker/entrypoint.prod.sh
+      - /home/app/entrypoint.prod.sh
 
   nginx:
     container_name: nginx

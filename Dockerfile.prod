@@ -9,7 +9,7 @@ WORKDIR /usr/src/app
 ENV PYTHONDONTWRITEBYTECODE 1
 ENV PYTHONUNBUFFERED 1
 
-# build dependencies for mysqlclient
+# mysqlclient 설치에 필요한 의존성
 RUN apt-get update \
  && apt-get install -y \
     gcc \
@@ -29,24 +29,27 @@ RUN pip wheel --no-cache-dir --no-deps --wheel-dir /usr/src/app/wheels -r requir
 
 FROM python:3.9-slim
 
+# 디렉토리 및 사용자 설정
 RUN mkdir -p /home/app
 RUN addgroup --system app && adduser --system --ingroup app app
 
 ENV HOME=/home/app
-ENV APP_HOME=/home/app/web
-RUN mkdir -p $APP_HOME/static $APP_HOME/media
-WORKDIR $APP_HOME/naughtyDjango
+ENV APP_HOME=/home/app
+WORKDIR $APP_HOME
 
-# runtime에 필요한 라이브러리만 설치
+# 필요한 시스템 라이브러리 설치
 RUN apt-get update && apt-get install -y libmariadb3 \
     && rm -rf /var/lib/apt/lists/*
 
+# wheel 설치
 COPY --from=builder /usr/src/app/wheels /wheels
 COPY --from=builder /usr/src/app/requirements.txt .
 RUN pip install --no-cache-dir /wheels/*
 
+# entrypoint 및 앱 코드 복사
 COPY ./config/docker/entrypoint.prod.sh $APP_HOME
 COPY . $APP_HOME
-RUN chown -R app:app $APP_HOME
 
+# 권한 설정
+RUN chown -R app:app $APP_HOME
 USER app
