@@ -1,5 +1,7 @@
 FROM python:3.9.6-slim
 
+RUN chmod +x /home/app/entrypoint.prod.sh
+
 # 시스템 패키지 설치
 RUN apt-get update
 RUN apt-get install -y gcc
