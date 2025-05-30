@@ -3,11 +3,10 @@ FROM python:3.9.6-slim
 # 시스템 패키지 설치
 RUN apt-get update && apt-get install -y \
     default-libmysqlclient-dev \
+    libmysqlclient-dev \
     build-essential \
     gcc \
     python3-dev \
-    libmariadb-dev-compat \
-    libmariadb-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Python 출력 버퍼링 제거
@@ -19,8 +18,6 @@ WORKDIR /app
 
 # requirements 먼저 복사하고 설치 (캐시 최적화)
 COPY requirements.txt /app/requirements.txt
-
-RUN apt-get install libmysqlclient-dev -y
 
 RUN pip install --upgrade pip && pip install -r requirements.txt
 

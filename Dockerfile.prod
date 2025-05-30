@@ -11,12 +11,10 @@ WORKDIR /usr/src/app
 ENV PYTHONDONTWRITEBYTECODE 1
 ENV PYTHONUNBUFFERED 1
 
-# install psycopg2 dependencies
+# install mysqlclient dependencies
 RUN apt-get update \
-    && apt-get install -y postgresql-client libpq-dev gcc python3-dev \
+    && apt-get install -y default-libmysqlclient-dev libmysqlclient-dev gcc python3-dev \
     && rm -rf /var/lib/apt/lists/*
-
-RUN apt-get install libmysqlclient-dev -y
 
 # install dependencies
 COPY ./requirements.txt .
@@ -42,23 +40,23 @@ ENV APP_HOME=/home/app/web
 RUN mkdir -p $APP_HOME/static $APP_HOME/media
 WORKDIR $APP_HOME
 
-# install dependencies
-RUN apt-get update && apt-get install -y libpq5 \
+# install runtime dependencies
+RUN apt-get update && apt-get install -y libmysqlclient-dev \
     && rm -rf /var/lib/apt/lists/*
 
+# copy python dependencies from builder
 COPY --from=builder /usr/src/app/wheels /wheels
 COPY --from=builder /usr/src/app/requirements.txt .
-
 RUN pip install --no-cache-dir /wheels/*
 
-# copy entrypoint-prod.sh
+# copy entrypoint
 COPY ./config/docker/entrypoint.prod.sh $APP_HOME
 
-# copy project
+# copy project files
 COPY . $APP_HOME
 
 # chown all the files to the app user
 RUN chown -R app:app $APP_HOME
 
-# change to the app user
+# switch to app user
 USER app
