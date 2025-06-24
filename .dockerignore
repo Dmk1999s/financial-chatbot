@@ -8,3 +8,9 @@ __pycache__/
 .gitignore
 db.sqlite3
 media/
+
+# 불필요한 개인 설정, IDE 파일 무시
+.idea/
+.DS_Store
+*.log
+*.sqlite3

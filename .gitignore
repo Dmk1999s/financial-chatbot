@@ -166,3 +166,7 @@ cython_debug/
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 .idea/
 
+# 불필요한 개인 설정, IDE 파일 무시
+.DS_Store
+*.pyc
+*.sqlite3
