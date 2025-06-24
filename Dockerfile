@@ -1,24 +1,23 @@
 FROM python:3.9.6-slim
 
-
-# 시스템 패키지 설치
-RUN apt-get update
-RUN apt-get install -y gcc
-RUN apt-get install -y default-libmysqlclient-dev
-RUN apt-get update && apt-get install -y pkg-config
+# 필수 시스템 패키지 설치 (한 줄로 묶기)
+RUN apt-get update && apt-get install -y \
+    gcc \
+    default-libmysqlclient-dev \
+    pkg-config \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 
 # Python 출력 버퍼링 제거
-ENV PYTHONUNBUFFERED 1
+ENV PYTHONUNBUFFERED=1
 
-# 작업 디렉토리 생성 및 설정
-RUN mkdir /app
+# 작업 디렉토리 설정 (HOME 기반으로 수정 가능)
 WORKDIR /app
 
-# requirements 먼저 복사하고 설치 (캐시 최적화)
-COPY requirements.txt /app/requirements.txt
+# 종속성 먼저 복사하고 설치 (캐시 최적화)
+COPY requirements.txt .
 
 RUN pip install --upgrade pip && pip install -r requirements.txt
 
-
-# 코드 복사
-COPY . /app/
+# 전체 코드 복사
+COPY . .

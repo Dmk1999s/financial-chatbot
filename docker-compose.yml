@@ -1,41 +1,39 @@
-version: '3'
-services:
+version: '3.8'
 
+services:
   db:
     container_name: db
     image: mysql:8.0.42
     restart: always
     environment:
       MYSQL_ROOT_HOST: '%'
-      MYSQL_ROOT_PASSWORD: mysql
-    expose:
-      - 3306
-    ports: # 포트포워딩 - 로컬의 호스트가 3306포트를 사용 중일 수 있으므로 3307 포트를 도커 컨테이너의 3306 포트로 포워딩해줌
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+    ports:
       - "3307:3306"
-    env_file: # 설정은 .env 파일에 의존
+    env_file:
       - .env
-    volumes: # 파일 시스템 정의
+    volumes:
       - dbdata:/var/lib/mysql
 
   web:
     container_name: web
-    build: . # . 은 디폴트 -> 프로젝트 내의 "Dockerfile"이라는 이름을 알아서 찾아 빌드해줌
-    command: sh -c "python manage.py migrate && python manage.py runserver 0.0.0.0:8000" # 최종 런서버 - 브라우저에서 확인 가능
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: >
+      sh -c "python manage.py migrate &&
+             python manage.py runserver 0.0.0.0:8000"
     environment:
-      MYSQL_ROOT_PASSWORD: mysql
-      DATABASE_NAME: mysql
-      DATABASE_USER: 'root'
-      DATABASE_PASSWORD: mysql
-      DATABASE_PORT: 3306
-      DATABASE_HOST: db
-      DJANGO_SETTINGS_MODULE: naughtyDjango.naughtyDjango.settings.py
+      DJANGO_SETTINGS_MODULE: naughtyDjango.settings  # .py는 생략
+    env_file:
+      - .env
     restart: always
     ports:
       - "8000:8000"
-    volumes: # 파일 시스템 정의
+    volumes:
       - .:/app
-    depends_on: # db 컨테이너로 연결
+    depends_on:
       - db
+
 volumes:
-  app:
   dbdata:
