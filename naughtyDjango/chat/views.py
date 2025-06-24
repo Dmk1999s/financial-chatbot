@@ -21,7 +21,6 @@ load_dotenv()
 
 # ===== GPT 채팅 엔드포인트 =====
 @api_view(["POST"])
-@csrf_exempt
 @authentication_classes([])  # 인증 비활성화
 @permission_classes([AllowAny])  # 모든 사용자 허용
 @swagger_auto_schema(
@@ -147,7 +146,6 @@ def get_chat_history(request, id):
 @api_view(["POST"])
 @authentication_classes([])  # 인증 비활성화
 @permission_classes([AllowAny])  # 모든 사용자 허용
-@csrf_exempt
 @swagger_auto_schema(
     method="post",
     operation_description="사용자의 투자 정보를 데이터베이스에 저장합니다.",
