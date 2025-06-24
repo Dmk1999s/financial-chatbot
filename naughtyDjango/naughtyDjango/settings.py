@@ -43,6 +43,13 @@ ALLOWED_HOSTS = ['*']
 
 # Application definition
 
+# settings.py
+SWAGGER_SETTINGS = {
+    'USE_SESSION_AUTH': False,  # 로그인 세션 없이 접근 가능하게
+    #'LOGIN_URL': '/admin/login/',
+    #'LOGOUT_URL': '/admin/logout/',
+}
+
 INSTALLED_APPS = [
     #'django.contrib.admin',
     'django.contrib.auth',
