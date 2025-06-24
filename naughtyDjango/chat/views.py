@@ -14,6 +14,7 @@ from naughtyDjango.utils.custom_response import CustomResponse
 from naughtyDjango.constants.error_codes import GeneralErrorCode
 from naughtyDjango.constants.success_codes import GeneralSuccessCode
 from chat.gpt_service import handle_chat, get_session_id, extract_json_from_response
+from chat.serializers import ChatRequestSerializer
 
 import json
 
@@ -21,34 +22,24 @@ import json
 load_dotenv()
 
 # ===== GPT 채팅 엔드포인트 =====
-@api_view(["POST"])
-@authentication_classes([])  # 인증 비활성화
-@permission_classes([AllowAny])  # 모든 사용자 허용
 @swagger_auto_schema(
     operation_description="GPT와 대화합니다.",
-    request_body=openapi.Schema(
-        type=openapi.TYPE_OBJECT,
-        properties={
-            "id": openapi.Schema(type=openapi.TYPE_STRING, description="사용자 아이디"),
-            "session_id": openapi.Schema(type=openapi.TYPE_STRING, description="세션 아이디"),
-            "message": openapi.Schema(type=openapi.TYPE_STRING, description="사용자의 입력 메시지"),
-        },
-        required=["message"],
-    ),
+    request_body=ChatRequestSerializer,
+    method='post',
     responses={
         200: openapi.Response(
             "성공",
             openapi.Schema(
                 type=openapi.TYPE_OBJECT,
                 properties={
-                    "isSuccess": openapi.Schema(type=openapi.TYPE_BOOLEAN, description="성공 여부"),
-                    "code": openapi.Schema(type=openapi.TYPE_STRING, description="응답 코드"),
-                    "message": openapi.Schema(type=openapi.TYPE_STRING, description="응답 메시지"),
+                    "isSuccess": openapi.Schema(type=openapi.TYPE_BOOLEAN),
+                    "code": openapi.Schema(type=openapi.TYPE_STRING),
+                    "message": openapi.Schema(type=openapi.TYPE_STRING),
                     "result": openapi.Schema(
                         type=openapi.TYPE_OBJECT,
                         properties={
-                            "session_id": openapi.Schema(type=openapi.TYPE_STRING, description="세션 ID"),
-                            "response": openapi.Schema(type=openapi.TYPE_STRING, description="GPT의 응답"),
+                            "session_id": openapi.Schema(type=openapi.TYPE_STRING),
+                            "response": openapi.Schema(type=openapi.TYPE_STRING),
                         },
                     ),
                 },
@@ -56,9 +47,15 @@ load_dotenv()
         ),
     },
 )
+@api_view(["POST"])
+@authentication_classes([])  # 인증 비활성화
+@permission_classes([AllowAny])  # 모든 사용자 허용
 def chat_with_gpt(request):
     try:
-        data = json.loads(request.body)
+        serializer = ChatRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
         user_id = data.get("id")
         session_id = get_session_id(data)
         user_input = data.get("message")
@@ -77,17 +74,15 @@ def chat_with_gpt(request):
         return JsonResponse({
             "isSuccess": False,
             "code": GeneralErrorCode.INTERNAL_SERVER_ERROR[0],
-            "message": str(e),
-            "result": {"error": str(e)},
+            "message": GeneralErrorCode.INTERNAL_SERVER_ERROR[1],
+            "result": {"error": repr(e)},
         }, status=500)
 
 
 # ===== 대화 이력 조회 엔드포인트 =====
-@api_view(["GET"])
-@authentication_classes([])  # 인증 비활성화
-@permission_classes([AllowAny])  # 모든 사용자 허용
 @swagger_auto_schema(
     operation_description="사용자의 대화 이력을 조회합니다.",
+    method="get",
     responses={
         200: openapi.Response(
             "성공",
@@ -113,6 +108,9 @@ def chat_with_gpt(request):
         ),
     },
 )
+@api_view(["GET"])
+@authentication_classes([])  # 인증 비활성화
+@permission_classes([AllowAny])  # 모든 사용자 허용
 def get_chat_history(request, id):
     try:
         chats = User.objects.filter(id=id).order_by("timestamp")
@@ -142,11 +140,9 @@ def get_chat_history(request, id):
 
 
 # ===== 투자 프로필 저장 엔드포인트 =====
-@api_view(["POST"])
-@authentication_classes([])  # 인증 비활성화
-@permission_classes([AllowAny])  # 모든 사용자 허용
 @swagger_auto_schema(
     operation_description="사용자의 투자 정보를 데이터베이스에 저장합니다.",
+    method="post",
     request_body=openapi.Schema(
         type=openapi.TYPE_OBJECT,
         properties={
@@ -171,6 +167,9 @@ def get_chat_history(request, id):
     ),
     responses={200: openapi.Response("성공", openapi.Schema(type=openapi.TYPE_OBJECT, properties={"message": openapi.Schema(type=openapi.TYPE_STRING)}))},
 )
+@api_view(["POST"])
+@authentication_classes([])  # 인증 비활성화
+@permission_classes([AllowAny])  # 모든 사용자 허용
 def save_investment_profile(request):
     try:
         data = json.loads(request.body.decode("utf-8"))
@@ -209,11 +208,9 @@ def save_investment_profile(request):
 
 
 # ===== 금융상품 추천 엔드포인트 =====
-@api_view(["POST"])
-@authentication_classes([])  # 인증 비활성화
-@permission_classes([AllowAny])  # 모든 사용자 허용
 @swagger_auto_schema(
     operation_description="사용자 질문에 따라 금융상품을 추천합니다.",
+    method="post",
     request_body=openapi.Schema(
         type=openapi.TYPE_OBJECT,
         properties={
@@ -232,6 +229,9 @@ def save_investment_profile(request):
         ),
     )},
 )
+@api_view(["POST"])
+@authentication_classes([])  # 인증 비활성화
+@permission_classes([AllowAny])  # 모든 사용자 허용
 def recommend_products(request):
     """
     POST /recommend/
