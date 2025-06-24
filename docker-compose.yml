@@ -34,6 +34,20 @@ services:
       - .:/app
     depends_on:
       - db
+  nginx:
+    container_name: nginx
+    build:
+      context: ./config/nginx
+      dockerfile: Dockerfile
+    ports:
+      - "80:80"
+    depends_on:
+      - web
+    volumes:
+      - static_volume:/app/static
+      - media_volume:/app/media
 
 volumes:
   dbdata:
+  static_volume:
+  media_volume:
