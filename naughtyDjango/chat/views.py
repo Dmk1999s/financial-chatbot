@@ -20,6 +20,7 @@ import json
 load_dotenv()
 
 # ===== GPT 채팅 엔드포인트 =====
+@api_view(["POST"])
 @swagger_auto_schema(
     method="post",
     operation_description="GPT와 대화합니다.",
@@ -53,9 +54,9 @@ load_dotenv()
         ),
     },
 )
-@api_view(["POST"])
 @csrf_exempt
-
+@authentication_classes([])  # 인증 비활성화
+@permission_classes([AllowAny])  # 모든 사용자 허용
 def chat_with_gpt(request):
     try:
         data = json.loads(request.body)
@@ -83,6 +84,7 @@ def chat_with_gpt(request):
 
 
 # ===== 대화 이력 조회 엔드포인트 =====
+@api_view(["GET"])
 @swagger_auto_schema(
     method="get",
     operation_description="사용자의 대화 이력을 조회합니다.",
@@ -111,7 +113,8 @@ def chat_with_gpt(request):
         ),
     },
 )
-@api_view(["GET"])
+@authentication_classes([])  # 인증 비활성화
+@permission_classes([AllowAny])  # 모든 사용자 허용
 def get_chat_history(request, id):
     try:
         chats = User.objects.filter(id=id).order_by("timestamp")
@@ -141,6 +144,7 @@ def get_chat_history(request, id):
 
 
 # ===== 투자 프로필 저장 엔드포인트 =====
+@api_view(["POST"])
 @swagger_auto_schema(
     method="post",
     operation_description="사용자의 투자 정보를 데이터베이스에 저장합니다.",
@@ -168,7 +172,8 @@ def get_chat_history(request, id):
     ),
     responses={200: openapi.Response("성공", openapi.Schema(type=openapi.TYPE_OBJECT, properties={"message": openapi.Schema(type=openapi.TYPE_STRING)}))},
 )
-@api_view(["POST"])
+@authentication_classes([])  # 인증 비활성화
+@permission_classes([AllowAny])  # 모든 사용자 허용
 @csrf_exempt
 def save_investment_profile(request):
     try:
@@ -208,6 +213,7 @@ def save_investment_profile(request):
 
 
 # ===== 금융상품 추천 엔드포인트 =====
+@api_view(["POST"])
 @swagger_auto_schema(
     method="post",
     operation_description="사용자 질문에 따라 금융상품을 추천합니다.",
@@ -229,8 +235,8 @@ def save_investment_profile(request):
         ),
     )},
 )
-
-@api_view(["POST"])
+@authentication_classes([])  # 인증 비활성화
+@permission_classes([AllowAny])  # 모든 사용자 허용
 def recommend_products(request):
     """
     POST /recommend/
