@@ -32,6 +32,7 @@ services:
       - "8000:8000"
     volumes:
       - .:/app
+      - static_volume:/home/app/web/static  # ✅ static 파일을 volume에 저장
     depends_on:
       - db
   nginx:
@@ -44,8 +45,8 @@ services:
     depends_on:
       - web
     volumes:
-      - static_volume:/app/static
-      - media_volume:/app/media
+      - static_volume:/home/app/web/static
+      - media_volume:/home/app/web/media
 
 volumes:
   dbdata:
