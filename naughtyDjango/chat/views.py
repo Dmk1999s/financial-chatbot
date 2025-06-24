@@ -55,8 +55,7 @@ load_dotenv()
 )
 @api_view(["POST"])
 @csrf_exempt
-@authentication_classes([])  # 인증 비활성화
-@permission_classes([AllowAny])
+
 def chat_with_gpt(request):
     try:
         data = json.loads(request.body)
@@ -113,8 +112,6 @@ def chat_with_gpt(request):
     },
 )
 @api_view(["GET"])
-@authentication_classes([])  # 인증 비활성화
-@permission_classes([AllowAny])
 def get_chat_history(request, id):
     try:
         chats = User.objects.filter(id=id).order_by("timestamp")
@@ -172,8 +169,6 @@ def get_chat_history(request, id):
     responses={200: openapi.Response("성공", openapi.Schema(type=openapi.TYPE_OBJECT, properties={"message": openapi.Schema(type=openapi.TYPE_STRING)}))},
 )
 @api_view(["POST"])
-@authentication_classes([])  # 인증 비활성화
-@permission_classes([AllowAny])
 @csrf_exempt
 def save_investment_profile(request):
     try:
@@ -234,9 +229,8 @@ def save_investment_profile(request):
         ),
     )},
 )
+
 @api_view(["POST"])
-@authentication_classes([])  # 인증 비활성화
-@permission_classes([AllowAny])
 def recommend_products(request):
     """
     POST /recommend/
