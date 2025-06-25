@@ -33,6 +33,7 @@ services:
     volumes:
       - .:/app
       - static_volume:/home/app/web/static  # ✅ static 파일을 volume에 저장
+      - media_volume:/home/app/web/media
     depends_on:
       - db
   nginx:

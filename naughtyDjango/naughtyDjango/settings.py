@@ -186,9 +186,9 @@ environ.Env.read_env(os.path.join(BASE_DIR, '.env'))
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 # 개발용이라면 (로컬에서)
-STATICFILES_DIRS = [
-    BASE_DIR / 'static',
-]
+#STATICFILES_DIRS = [
+#    BASE_DIR / 'static',
+#]
 
 
 STATIC_ROOT = "/home/app/web/static"
