@@ -8,11 +8,11 @@ from rest_framework.decorators import api_view, authentication_classes, permissi
 from rest_framework.permissions import AllowAny
 from chat.rag.financial_product_rag import answer_financial_question
 
-from naughtyDjango.models import User
+from main.models import User
 from openai import OpenAI
-from naughtyDjango.utils.custom_response import CustomResponse
-from naughtyDjango.constants.error_codes import GeneralErrorCode
-from naughtyDjango.constants.success_codes import GeneralSuccessCode
+from main.utils.custom_response import CustomResponse
+from main.constants.error_codes import GeneralErrorCode
+from main.constants.success_codes import GeneralSuccessCode
 from chat.gpt_service import handle_chat, get_session_id, extract_json_from_response
 from chat.serializers import ChatRequestSerializer, InvestmentProfileSerializer, SaveInvestmentProfileRequestSerializer, RecommendProductRequestSerializer
 
@@ -126,7 +126,7 @@ def get_chat_history(request, id):
             is_success=True,
             code=GeneralSuccessCode.OK[0],
             message=GeneralSuccessCode.OK[1],
-            result=history,
+            result=data,
             status=GeneralSuccessCode.OK[2],
         )
     except Exception as e:

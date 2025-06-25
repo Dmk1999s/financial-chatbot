@@ -1,6 +1,6 @@
 class AuthRouter:
     django_app_labels = {'auth', 'contenttypes', 'admin', 'sessions'}
-    naughty_app_label = 'naughtyDjango'
+    naughty_app_label = 'main'
     naughty_models_in_secondary = {'user'}  # 반드시 소문자!
 
     def db_for_read(self, model, **hints):

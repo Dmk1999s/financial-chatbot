@@ -60,7 +60,7 @@ INSTALLED_APPS = [
     'chat',
     'drf_yasg',
     #'rest_framework', #djangorestframework
-    'naughtyDjango',
+    'main',
 ]
 
 REST_FRAMEWORK = {
@@ -84,7 +84,7 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
-ROOT_URLCONF = 'naughtyDjango.urls'
+ROOT_URLCONF = 'main.urls'
 
 TEMPLATES = [
     {
@@ -102,7 +102,7 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = 'naughtyDjango.wsgi.application'
+WSGI_APPLICATION = 'main.wsgi.application'
 
 
 # Database
@@ -134,7 +134,7 @@ DATABASES = {
     }
 }
 
-DATABASE_ROUTERS = ['naughtyDjango.db_routers.AuthRouter']
+DATABASE_ROUTERS = ['main.db_routers.AuthRouter']
 
 # Password validation
 # https://docs.djangoproject.com/en/5.1/ref/settings/#auth-password-validators
