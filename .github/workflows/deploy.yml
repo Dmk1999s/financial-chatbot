@@ -1,5 +1,9 @@
 name: Deploy to EC2
-on: [push] # 깃헙 푸쉬했을 때마다
+
+on:
+  push:
+    branches:
+      - main
 
 jobs: # 아래의 jobs를 수행
 
