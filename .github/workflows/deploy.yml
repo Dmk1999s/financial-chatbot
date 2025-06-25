@@ -1,9 +1,12 @@
 name: Deploy to EC2
 
 on:
-  push:
+  pull_request:
     branches:
       - main
+    types:
+      - closed
+
 
 jobs: # 아래의 jobs를 수행
 
