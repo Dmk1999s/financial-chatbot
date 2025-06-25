@@ -7,6 +7,9 @@ __pycache__/
 # C extensions
 *.so
 
+.env
+.env.prod
+
 *.xml
 *.iml
 *.meta
@@ -128,7 +131,6 @@ celerybeat.pid
 
 # Environments
 .
-.env.prod
 .venv
 env/
 venv/
