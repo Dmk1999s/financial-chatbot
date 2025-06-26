@@ -1,0 +1,17 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+.env.prod
+.venv
+.git
+.gitignore
+db.sqlite3
+media/
+
+# 불필요한 개인 설정, IDE 파일 무시
+.idea/
+.DS_Store
+*.log
+*.sqlite3

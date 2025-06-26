@@ -37,10 +37,18 @@ SECRET_KEY = env('SECRET_KEY')
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+# for test
+ALLOWED_HOSTS = ['*']
 
 
 # Application definition
+
+# settings.py
+SWAGGER_SETTINGS = {
+    'USE_SESSION_AUTH': False,  # 로그인 세션 없이 접근 가능하게
+    #'LOGIN_URL': '/admin/login/',
+    #'LOGOUT_URL': '/admin/logout/',
+}
 
 INSTALLED_APPS = [
     #'django.contrib.admin',
@@ -48,12 +56,22 @@ INSTALLED_APPS = [
     'django.contrib.contenttypes',
     #'django.contrib.sessions',
     #'django.contrib.messages',
-    #'django.contrib.staticfiles',
+    'django.contrib.staticfiles',
     'chat',
-    #'drf_yasg', #drf_yasg
+    'drf_yasg',
     #'rest_framework', #djangorestframework
-    'naughtyDjango',
+    'main',
 ]
+
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': [],
+    'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.AllowAny',
+    ],
+    'DEFAULT_RENDERER_CLASSES': (
+        'rest_framework.renderers.JSONRenderer',
+    ),
+}
 
 
 MIDDLEWARE = [
@@ -66,7 +84,7 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
-ROOT_URLCONF = 'naughtyDjango.urls'
+ROOT_URLCONF = 'main.urls'
 
 TEMPLATES = [
     {
@@ -84,7 +102,7 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = 'naughtyDjango.wsgi.application'
+WSGI_APPLICATION = 'main.wsgi.application'
 
 
 # Database
@@ -97,7 +115,7 @@ DATABASES = {
         'USER': os.getenv('DB_USER'),
         'PASSWORD': os.getenv('DB_PASSWORD'),
         'HOST': os.getenv('DB_HOST'),
-        'PORT': '3306',
+        'PORT': os.getenv('LOCAL_PORT'),
         'OPTIONS': {
             'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
             #'auth_plugin': 'caching_sha2_password',  # 필수 추가[2][6]
@@ -109,14 +127,14 @@ DATABASES = {
         'USER': os.getenv('DB_USER'),
         'PASSWORD': os.getenv('DB_PASSWORD'),
         'HOST': os.getenv('DB_HOST'),
-        'PORT': '3306',
+        'PORT': os.getenv('LOCAL_PORT'),
         'OPTIONS': {
             'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
         }
     }
 }
 
-DATABASE_ROUTERS = ['naughtyDjango.db_routers.AuthRouter']
+DATABASE_ROUTERS = ['main.db_routers.AuthRouter']
 
 # Password validation
 # https://docs.djangoproject.com/en/5.1/ref/settings/#auth-password-validators
@@ -152,7 +170,7 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.1/howto/static-files/
 
-STATIC_URL = 'static/'
+STATIC_URL = '/static/'
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field
@@ -166,3 +184,12 @@ env = environ.Env()
 environ.Env.read_env(os.path.join(BASE_DIR, '.env'))
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+
+# 개발용이라면 (로컬에서)
+#STATICFILES_DIRS = [
+#    BASE_DIR / 'static',
+#]
+
+
+STATIC_ROOT = "/home/app/web/static"
+MEDIA_ROOT = "/home/app/web/media"
