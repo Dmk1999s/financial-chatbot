@@ -13,7 +13,7 @@ from openai import OpenAI
 from main.utils.custom_response import CustomResponse
 from main.constants.error_codes import GeneralErrorCode
 from main.constants.success_codes import GeneralSuccessCode
-from chat.gpt_service import handle_chat, get_session_id, extract_json_from_response
+from chat.gpt_service import handle_chat, get_session_id
 from chat.serializers import ChatRequestSerializer, InvestmentProfileSerializer, SaveInvestmentProfileRequestSerializer, RecommendProductRequestSerializer
 
 import json
@@ -61,7 +61,6 @@ def chat_with_gpt(request):
         user_input = data.get("message")
 
         gpt_reply, session_id = handle_chat(user_input, session_id, user_id)
-        extracted_data = extract_json_from_response(gpt_reply)
 
         return JsonResponse({
             "isSuccess": True,

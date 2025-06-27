@@ -7,27 +7,27 @@ from langchain_community.chat_message_histories import ChatMessageHistory
 from langchain_core.runnables import RunnableLambda
 from langchain_core.runnables.history import RunnableWithMessageHistory
 from main.models import User
+from functools import partial
 import re
+import ast
 import json
-from django.db import transaction
+import openai
 
 
 load_dotenv()
+
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 fine_tuned_model = "ft:gpt-3.5-turbo-0125:personal::BDpYRjbn"
 store = {}
+SESSION_TEMP_STORE = {}  # session_id: dict
 
-def get_session_id(request_data):
-    return request_data.get("session_id", str(uuid.uuid4()))
+REQUIRED_KEYS = {
+    "age", "risk_tolerance", "income_stability", "income_sources",
+    "income", "period", "expected_income", "expected_loss",
+    "purpose", "value_growth",
+    "risk_acceptance_level", "investment_concern"
+}
 
-def get_session_history(session_id: str):
-    if session_id not in store:
-        store[session_id] = ChatMessageHistory()
-    return store[session_id]
-
-def convert_history_to_openai_format(history):
-    role_map = {"human": "user", "ai": "assistant", "system": "system"}
-    return [{"role": role_map.get(msg.type, msg.type), "content": msg.content} for msg in history]
 prompt = f"""
 1. 너는 금융상품 추천 어플에 탑재된 챗봇이며, 이름은 '챗봇'이다.
 2. 한국어로 존댓말을 사용해야 한다.
@@ -46,59 +46,129 @@ prompt = f"""
 - risk_acceptance_level: 위험 수용 수준 (1~4의 정수. 1: 무조건 투자원금 보존, 2: 이자율 수준의 수익 및 손실 기대, 3: 시장에 비례한 수익 및 손실 기대, 4: 시장수익률 초과 수익 및 손실 기대) 
 - investment_concern: 투자 관련 고민 (예: 어떤 주식을 살지 모름)
 
-4. 각 항목을 사용자가 모두 응답하면 아래 JSON형식으로 모든 정보를 정리해서 보여줘야 한다.
-    {{
-        "age": <int>,
-        "risk_tolerance": "<string>",
-        "income_stability": "<string>",
-        "income_sources": "<string>",
-        "income": <int>,
-        "period": "<int>",
-        "expected_income": "<int>",
-        "expected_loss": "<int>",
-        "purpose": "<string>",
-        "asset_allocation_type": "<int>",
-        "value_growth": "<int>",
-        "risk_acceptance_level": "<int>",
-        "investment_concern": "<string>",
-    }}
+4. 각 항목을 사용자가 모두 응답하면 "이제 금융상품을 추천해줄게요!" 라는 말을 하며 대화를 끝낸다.
 """
 
+def get_session_id(request_data):
+    return request_data.get("session_id", str(uuid.uuid4()))
 
-def run_gpt(input_data, config):
+def get_session_history(session_id: str):
+    if session_id not in store:
+        store[session_id] = ChatMessageHistory()
+    return store[session_id]
+
+def convert_history_to_openai_format(history):
+    role_map = {"human": "user", "ai": "assistant", "system": "system"}
+    return [{"role": role_map.get(msg.type, msg.type), "content": msg.content} for msg in history]
+
+def has_required_keys(parsed: dict) -> bool:
+    return all(k in parsed and parsed[k] is not None for k in REQUIRED_KEYS)
+
+def run_gpt(input_data, config, ai_model):
     user_input = input_data["input"]
-    system_prompt = input_data.get("system_prompt", prompt)
-
     session_id = config.get("configurable", {}).get("session_id")
+
+    # 현재 누락된 필드 추적
+    missing_keys = []
+    if session_id in SESSION_TEMP_STORE:
+        current_data = SESSION_TEMP_STORE[session_id]
+        missing_keys = [key for key in REQUIRED_KEYS if key not in current_data or current_data[key] is None]
+
+    # 기본 프롬프트 + 누락된 키에 대한 질문 유도
+    base_prompt = input_data.get("system_prompt", prompt)
+    prompt_addition = ""
+    if missing_keys:
+        prompt_addition = (
+            "아직 수집되지 않은 정보는 다음과 같습니다:\n"
+            f"{', '.join(missing_keys)}\n"
+            "이 정보를 자연스럽게 대화를 통해 질문해 주세요. 질문은 반드시 한 번에 하나씩 하세요."
+        )
+
+    full_prompt = base_prompt + prompt_addition
+
     history = get_session_history(session_id).messages
     formatted_history = convert_history_to_openai_format(history)
 
-    messages = [{"role": "system", "content": system_prompt}] + formatted_history + [
+    messages = [{"role": "system", "content": full_prompt}] + formatted_history + [
         {"role": "user", "content": user_input}
     ]
 
     response = client.chat.completions.create(
-        model=fine_tuned_model,
-        messages=messages
+        model=ai_model,
+        messages=messages,
+        temperature=0.0,
     )
     return {"output": response.choices[0].message.content}
 
-def extract_json_from_response(text: str):
-    try:
-        cleaned_text = re.sub(r"```json|```", "", text).strip()
 
-        match = re.search(r"\{.*\}", cleaned_text, re.DOTALL)
-        if match:
-            json_str = match.group()
-            return json.loads(json_str)
-        else:
-            print("[⚠️] JSON 형식이 아님")
-            return {}
+def call_gpt_model(prompt: str, session_id: str) -> str:
+    input_data = {
+        "input": prompt,
+        "system_prompt": (
+                "너는 오직 JSON 객체만 반환하는 파서야.\n"
+                "절대 질문이나 설명 없이 JSON만 응답해. 이 외의 텍스트는 허용되지 않아.\n"
+                "다음은 JSON 예시야:\n"
+                "{\n"
+                "  \"age\": 25,\n"
+                "  \"income\": 4000000,\n"
+                "  \"income_sources\": \"아르바이트\",\n"
+                "  \"income_stability\": \"불안정\",\n"
+                "  \"period\": 30,\n"
+                "  \"expected_income\": 300000,\n"
+                "  \"expected_loss\": 100000,\n"
+                "  \"purpose\": \"단기 수익\",\n"
+                "  \"asset_allocation_type\": 2,\n"
+                "  \"value_growth\": 1,\n"
+                "  \"risk_acceptance_level\": 3,\n"
+                "  \"investment_concern\": \"무슨 주식을 사야 할지 모르겠어요\",\n"
+                "  \"risk_tolerance\": \"중간\"\n"
+                "}\n"
+                "모든 항목이 없을 경우에는 반드시 빈 객체인 `{}` 만 출력해.\n"
+                "JSON 외의 문장이 한 줄이라도 있으면 오류야. 반드시 지켜.\n"
+        )
+    }
+
+    config = {
+        "configurable": {
+            "session_id": session_id
+        }
+    }
+
+    return run_gpt(input_data, config, "gpt-3.5-turbo")["output"]
+
+def extract_json_from_response(response_text: str) -> dict:
+    try:
+        # 중괄호로 둘러싸인 JSON 블록 추출
+        json_text = re.search(r'{.*}', response_text, re.DOTALL).group()
+        print(f"❗ JSON 추출 결과: {json.loads(json_text)}")
+        return json.loads(json_text)
     except Exception as e:
+        print(f"❗ JSON 추출 실패: {e}")
         return {}
 
+def extract_fields_from_natural_response(response_text: str, session_id: str) -> dict:
+    gpt_raw = call_gpt_model(response_text, session_id)
+    print("📥 GPT raw repr:", repr(gpt_raw))
+    print("📥 GPT 응답:", gpt_raw)
+
+    try:
+        match = re.search(r'\{.*\}', gpt_raw, re.DOTALL)
+        if match:
+            json_text = match.group().strip()
+            parsed = json.loads(json_text)
+            print(f"✅ 파싱된 JSON: {parsed}")
+            (print(type(parsed)))
+            return parsed
+        else:
+            print("❗ JSON 형식이 아님. 응답 없음으로 처리합니다.")
+            return {}
+    except Exception as e:
+        print(f"❗ 예외 발생: {e}")
+        return {}
+
+run_gpt_with_model = partial(run_gpt, ai_model=fine_tuned_model)
 # Runnable 구성
-runnable = RunnableLambda(run_gpt)
+runnable = RunnableLambda(run_gpt_with_model)
 
 with_message_history = RunnableWithMessageHistory(
     runnable,
@@ -139,21 +209,27 @@ def handle_chat(user_input, session_id, user_id=None):
         {"input": user_input},
         config={"configurable": {"session_id": session_id}}
     )
+
     gpt_reply = result["output"]
 
+    extracted_fields = extract_fields_from_natural_response(gpt_reply, session_id)
 
-    if "{" in gpt_reply and "}" in gpt_reply:
-        parsed = extract_json_from_response(gpt_reply)
+    if session_id not in SESSION_TEMP_STORE:
+        SESSION_TEMP_STORE[session_id] = {}
 
-        required_keys = [
-            "age", "risk_tolerance", "income_stability", "income_sources",
-            "income", "period", "expected_income", "expected_loss",
-            "purpose", "asset_allocation_type", "value_growth",
-            "risk_acceptance_level", "investment_concern"
-        ]
+    # 누적 저장 (None 값 + 오타 키 제거)
+    valid_fields = {
+        k: v for k, v in extracted_fields.items()
+        if k in REQUIRED_KEYS and v is not None
+    }
+    SESSION_TEMP_STORE[session_id].update(valid_fields)
 
-        if all(k in parsed and parsed[k] is not None for k in required_keys):
-            if user_id:
-                save_profile_from_gpt(parsed, user_id, session_id)
+    current_data = SESSION_TEMP_STORE[session_id]
+
+    # 모든 필드가 모이면 저장
+    if REQUIRED_KEYS.issubset(current_data.keys()):
+        if user_id:
+            save_profile_from_gpt(current_data, user_id, session_id)
+        del SESSION_TEMP_STORE[session_id]  # 저장 후 초기화
 
     return gpt_reply, session_id
