@@ -8,6 +8,7 @@ from langchain_core.runnables import RunnableLambda
 from langchain_core.runnables.history import RunnableWithMessageHistory
 from main.models import User
 from functools import partial
+from main.models import ChatMessage, InvestmentProfile, User
 import re
 import ast
 import json
@@ -169,25 +170,18 @@ def _run_gpt_parser(input_data, config, model):
     )
     return {"output": response.choices[0].message.content}
 
-
-def extract_fields_from_natural_response(response_text: str, session_id: str) -> dict:
-    gpt_raw = call_gpt_model(response_text, session_id)
-    print("📥 GPT raw repr:", repr(gpt_raw))
-    print("📥 GPT 응답:", gpt_raw)
-
+def extract_json_from_response(text: str):
     try:
-        match = re.search(r'\{.*\}', gpt_raw, re.DOTALL)
+        cleaned_text = re.sub(r"```json|```", "", text).strip()
+
+        match = re.search(r"\{.*\}", cleaned_text, re.DOTALL)
         if match:
-            json_text = match.group().strip()
-            parsed = json.loads(json_text)
-            print(f"✅ 파싱된 JSON: {parsed}")
-            (print(type(parsed)))
-            return parsed
+            json_str = match.group()
+            return json.loads(json_str)
         else:
             print("❗ JSON 형식이 아님. 응답 없음으로 처리합니다.")
             return {}
     except Exception as e:
-        print(f"❗ 예외 발생: {e}")
         return {}
 
 run_gpt_with_model = partial(run_gpt, ai_model=fine_tuned_model)
@@ -229,7 +223,8 @@ def save_profile_from_gpt(parsed_data, user_id, session_id):
 views.py에 제공하는 함수
 """
 def handle_chat(user_input, session_id, user_id=None):
-    result = with_message_history.invoke(
+    # 1) 메시지 히스토리 호출
+    result    = with_message_history.invoke(
         {"input": user_input},
         config={"configurable": {"session_id": session_id}}
     )
