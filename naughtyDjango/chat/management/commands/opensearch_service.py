@@ -101,15 +101,23 @@ class Command(BaseCommand):
         chat_resp = openai.chat.completions.create(
             model=fine_tuned_model,
             messages=[
-                {"role": "system", "content": "당신은 금융 전문가로, 추천된 금융상품을 사용자가 이해하기 쉬운 자연스러운 문장으로 설명해주는 역할을 합니다."},
+                {
+                    "role": "system",
+                    "content": (
+                        "당신은 금융 전문가입니다. "
+                        "추천된 금융상품을 상담사가 고객에게 설명하듯이, "
+                        "자연스럽고 부드러운 문장으로 풀어 설명해주세요."
+                    )
+                },
                 {
                     "role": "user",
                     "content": (
-                        "아래 검색 결과를 바탕으로, 각 금융상품을 추천하듯 자연스럽고 친절한 한국어 문장으로 설명해주세요."
+                        "아래 검색 결과를 참고하여, 각 상품별로 2~3문장 정도의 자연스러운 문단으로 추천 내용을 작성해주세요.\n "
                         f"\n{json.dumps(hits, ensure_ascii=False, indent=2)}"
                     )
                 }
-            ]
+            ],
+            temperature=0.7,
         )
 
         formatted = chat_resp.choices[0].message.content
