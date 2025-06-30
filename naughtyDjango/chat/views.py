@@ -1,13 +1,18 @@
 # chat/views.py
+import os
+
 from dotenv import load_dotenv
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
-from rest_framework.decorators import api_view
+from openai import OpenAI
+from rest_framework.decorators import api_view, permission_classes
 import io
 from django.core.management import call_command
 from rest_framework.decorators import api_view
+from rest_framework.permissions import AllowAny
+
 from chat.opensearch_client import search_financial_products
 from chat.rag.financial_product_rag import answer_financial_question
 from chat.models import ChatMessage, InvestmentProfile
@@ -23,6 +28,21 @@ from chat.serializers import ChatRequestSerializer, InvestmentProfileSerializer,
 import json
 
 load_dotenv()
+
+# ── 변경 감지용 프롬프트 ──
+DETECTION_SYSTEM = """
+당신은 '투자 프로필 변경 트리거'를 감지하는 어시스턴트입니다.
+사용자 발화를 보고, 아래 필드 중 변경 의도가 있는지 JSON으로 반환하세요.
+필드: age, monthly_income, risk_tolerance, income_stability,
+income_sources, investment_horizon, expected_return,
+expected_loss, investment_purpose, asset_allocation_type,
+value_growth, risk_acceptance_level, investment_concern
+
+예시) {"field":"monthly_income","value":4500000}
+
+변경 의도가 없으면 {} 만 반환하세요.
+"""
+
 
 # ===== GPT 채팅 엔드포인트 =====
 @swagger_auto_schema(
@@ -57,56 +77,150 @@ load_dotenv()
         ),
     )},
 )
+
 @api_view(["POST"])
+@permission_classes([AllowAny])
 @csrf_exempt
 def chat_with_gpt(request):
+    """
+    1) 사용자 메시지 저장
+    2) 변경감지 → 제안 → 확정
+    3) 일반 챗 흐름(handle_chat)
+    """
     try:
-        data          = json.loads(request.body)
-        username      = data.get("username", "")
-        product_type  = data.get("product_type", "")
-        session_id    = get_session_id(data)
-        user_message  = data.get("message")
+        body       = json.loads(request.body)
+        username   = body.get("username", "")
+        session_id = body.get("session_id") or get_session_id(body)
+        InvestmentProfile.objects.get_or_create(
+            session_id=session_id,
+            user_id=username,
+            defaults={} # 필요한 경우에 기본값 지정 가능
+        )
+        message    = (body.get("message") or "").strip()
+        if not message:
+            return CustomResponse(
+                is_success=False,
+                code=GeneralErrorCode.INVALID_REQUEST[0],
+                message="`message` 파라미터가 필요합니다.",
+                result={},
+                status=GeneralErrorCode.INVALID_REQUEST[2],
+            )
 
-        # (1) User 메시지 저장
+        # 1) 사용자 메시지 저장
         ChatMessage.objects.create(
             session_id=session_id,
             username=username,
-            product_type=product_type,
+            product_type=body.get("product_type", ""),
             role="user",
-            message=user_message,
+            message=message,
         )
 
-        # (2) GPT 호출
-        gpt_reply, session_id = handle_chat(user_message, session_id, user_id=username)
+        # 2) 변경 확정 처리 (프론트가 update_confirm 플래그로 전송할 때)
+        if body.get("update_confirm"):
+            field = body.get("field")
+            value = body.get("value")
+            if field and value is not None:
+                InvestmentProfile.objects.update_or_create(
+                    session_id=session_id,
+                    user_id=username,
+                    defaults={field: value}
+                )
+                confirm_msg = f"{field} 정보를 {value}으로 업데이트했습니다."
+                ChatMessage.objects.create(
+                    session_id=session_id,
+                    username=username,
+                    product_type=body.get("product_type", ""),
+                    role="assistant",
+                    message=confirm_msg,
+                )
+                return CustomResponse(
+                    is_success=True,
+                    code=GeneralSuccessCode.OK[0],
+                    message=GeneralSuccessCode.OK[1],
+                    result={"response": confirm_msg},
+                    status=GeneralSuccessCode.OK[2],
+                )
 
-        # (3) Assistant 메시지 저장
+        # 3) 변경 감지 호출
+        openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        detect_resp = openai_client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": DETECTION_SYSTEM},
+                {"role": "user",   "content": message},
+            ],
+            temperature=0
+        )
+        trigger = extract_json_from_response(detect_resp.choices[0].message.content)
+
+        if isinstance(trigger, dict) and trigger:
+            field = trigger.get("field")
+            value = trigger.get("value")
+            if field and value is not None:
+                # 사용자에게 제안할 메시지 구성
+                label_map = {
+                    "risk_tolerance": "위험 허용 정도",
+                    "age": "나이",
+                    "income_stability": "소득 안정성",
+                    "income_sources": "소득원",
+                    "monthly_income": "월 수입",
+                    "investment_horizon": "투자 기간",
+                    "expected_return": "기대 수익",
+                    "expected_loss": "예상 손실",
+                    "investment_purpose": "투자 목적",
+                    "asset_allocation_type": "자산 배분 유형",
+                    "value_growth": "가치/성장 구분",
+                    "risk_acceptance_level": "위험 수용 수준",
+                    "investment_concern": "투자 관련 고민",
+                }
+                label = label_map.get(field, field)
+                propose_msg = f"{label}이(가) {value}으로 변경된 것 같아요. 프로필에도 업데이트해 드릴까요?"
+
+                ChatMessage.objects.create(
+                    session_id=session_id,
+                    username=username,
+                    product_type=body.get("product_type", ""),
+                    role="assistant",
+                    message=propose_msg,
+                )
+                return CustomResponse(
+                    is_success=True,
+                    code=GeneralSuccessCode.OK[0],
+                    message=GeneralSuccessCode.OK[1],
+                    result={
+                        "propose_update": propose_msg,
+                        "field": field,
+                        "value": value
+                    },
+                    status=GeneralSuccessCode.OK[2],
+                )
+
+        # 4) 일반 챗 흐름 (초기 프로필 수집 & Q&A)
+        gpt_reply, session_id = handle_chat(message, session_id, user_id=username)
+
         ChatMessage.objects.create(
             session_id=session_id,
             username=username,
-            product_type=product_type,
+            product_type=body.get("product_type", ""),
             role="assistant",
             message=gpt_reply,
         )
 
-        return JsonResponse(
-            {
-                "isSuccess": True,
-                "code":      GeneralSuccessCode.OK[0],
-                "message":   GeneralSuccessCode.OK[1],
-                "result":    {"session_id": session_id, "response": gpt_reply},
-            },
-            status=200
+        return CustomResponse(
+            is_success=True,
+            code=GeneralSuccessCode.OK[0],
+            message=GeneralSuccessCode.OK[1],
+            result={"response": gpt_reply, "session_id": session_id},
+            status=GeneralSuccessCode.OK[2],
         )
 
     except Exception as e:
-        return JsonResponse(
-            {
-                "isSuccess": False,
-                "code":      GeneralErrorCode.INTERNAL_SERVER_ERROR[0],
-                "message":   str(e),
-                "result":    {"error": str(e)},
-            },
-            status=500
+        return CustomResponse(
+            is_success=False,
+            code=GeneralErrorCode.INTERNAL_SERVER_ERROR[0],
+            message=GeneralErrorCode.INTERNAL_SERVER_ERROR[1],
+            result={"error": str(e)},
+            status=GeneralErrorCode.INTERNAL_SERVER_ERROR[2],
         )
 
 
@@ -205,41 +319,81 @@ def get_chat_history(request, username):
     ))},
 )
 @api_view(["POST"])
+@permission_classes([AllowAny])
+@csrf_exempt
 def recommend_products(request):
+    """
+    POST /recommend/
+    {
+      "username":     "<사용자ID>",
+      "product_type": "<예금|적금|연금|stock>",
+      "session_id":   "<세션ID>",         # 선택사항
+      "query":        "<검색어>",
+      "top_k":        5,                 # optional, 기본 3
+      "index":        "financial-products"  # optional
+    }
+    """
     try:
-        data          = json.loads(request.body)
-        username      = data.get("username", "")
-        product_type  = data.get("product_type", "")
-        session_id    = data.get("session_id", "")
-        q             = data.get("query", "").strip()
-        if not q:
-            return JsonResponse({"error": "query 파라미터가 필요합니다."}, status=400)
+        body = json.loads(request.body)
+        username     = body.get("username", "")
+        product_type = body.get("product_type", "")
+        session_id   = body.get("session_id") or get_session_id(body)
+        query        = (body.get("query") or "").strip()
+        top_k        = int(body.get("top_k", 3))
+        index_name   = body.get("index", os.getenv("OPENSEARCH_INDEX", "financial-products"))
 
-        # (1) User 쿼리도 ChatMessage로 저장
+        if not query:
+            return CustomResponse(
+                is_success=False,
+                code=GeneralErrorCode.INVALID_REQUEST[0],
+                message="`query` 파라미터가 필요합니다.",
+                result={},
+                status=GeneralErrorCode.INVALID_REQUEST[2]
+            )
+
+        # (1) 사용자 메시지 저장
         ChatMessage.objects.create(
             session_id=session_id,
             username=username,
             product_type=product_type,
             role="user",
-            message=q,
+            message=query,
         )
 
-        # (2) RAG 호출
-        rec = answer_financial_question(q)
+        buf = io.StringIO()
+        cmd_args = ['opensearch_service', query, f'--top_k={top_k}']
+        if index_name:
+            cmd_args.append(f'--index={index_name}')
 
-        # (3) Assistant 추천 응답도 ChatMessage로 저장
+        call_command(*cmd_args, stdout=buf)
+        recommendation = buf.getvalue().strip()
+
+        # (3) 어시스턴트 메시지 저장
         ChatMessage.objects.create(
             session_id=session_id,
             username=username,
             product_type=product_type,
             role="assistant",
-            message=rec,
+            message=recommendation,
         )
 
-        return JsonResponse({"query": q, "recommendation": rec}, status=200)
+        return CustomResponse(
+            is_success=True,
+            code=GeneralSuccessCode.OK[0],
+            message=GeneralSuccessCode.OK[1],
+            result={"response": recommendation},
+            status=GeneralSuccessCode.OK[2]
+        )
 
     except Exception as e:
-        return JsonResponse({"error": str(e)}, status=500)
+        return CustomResponse(
+            is_success=False,
+            code=GeneralErrorCode.INTERNAL_SERVER_ERROR[0],
+            message=GeneralErrorCode.INTERNAL_SERVER_ERROR[1],
+            result={"error": repr(e)},
+            status=GeneralErrorCode.INTERNAL_SERVER_ERROR[2]
+        )
+
 
 @api_view(["POST"])
 @csrf_exempt
@@ -275,50 +429,6 @@ def save_investment_profile(request):
             status=GeneralErrorCode.INTERNAL_SERVER_ERROR[2],
         )
 
-@api_view(["GET"])
-def product_search(request):
-    try:
-        q  = request.GET.get("q", "")
-        k  = int(request.GET.get("k", 5))
-        pt = request.GET.get("type")  # optional: 예금, 적금, 연금, stock 등
-
-        if not q:
-            return BadRequestException("q 파라미터가 필요합니다.")
-
-
-        hits = search_financial_products(
-            query=q,
-            top_k=k,
-            product_type=pt
-        )
-        return CustomResponse(
-            is_success=True,
-            code=GeneralSuccessCode.OK[0],
-            message=GeneralSuccessCode.OK[1],
-            result={"message": hits},
-            status=GeneralSuccessCode.OK[2],
-        )
-
-
-    except BadRequestException as e:
-        return CustomResponse(
-            is_success=False,
-            code=GeneralErrorCode.BAD_REQUEST[0],
-            message=str(e),
-            result={"error": str(e)},
-            status=GeneralErrorCode.BAD_REQUEST[2],
-        )
-
-    except Exception as e:
-        return CustomResponse(
-            is_success=False,
-            code=GeneralErrorCode.INTERNAL_SERVER_ERROR[0],
-            message=GeneralErrorCode.INTERNAL_SERVER_ERROR[1],
-            result={"error": str(e)},
-            status=GeneralErrorCode.INTERNAL_SERVER_ERROR[2],
-        )
-
-
 
 # ===== OpenSearch 인덱싱 즉시 실행 =====
 @api_view(['POST'])
@@ -330,55 +440,10 @@ def api_index_opensearch(request):
     try:
         buf = io.StringIO()
         call_command('index_to_opensearch', stdout=buf)
-        return CustomResponse(
-            is_success=True,
-            code=GeneralSuccessCode.OK[0],
-            message=GeneralSuccessCode.OK[1],
-            result={"message": buf.getvalue()},
-            status=GeneralSuccessCode.OK[2],
+        return JsonResponse(
+            {"message": buf.getvalue()},
+            status=200,
+            json_dumps_params={"ensure_ascii": False}
         )
     except Exception as e:
-        return CustomResponse(
-            is_success=False,
-            code=GeneralErrorCode.INTERNAL_SERVER_ERROR[0],
-            message=GeneralErrorCode.INTERNAL_SERVER_ERROR[1],
-            result={"error": str(e)},
-            status=GeneralErrorCode.INTERNAL_SERVER_ERROR[2],
-        )
-
-# ===== OpenSearch 검색 즉시 실행 =====
-@api_view(['GET'])
-def api_search_opensearch(request):
-    """
-    GET /api/opensearch/search/?q=<query>&top_k=<num>&index=<index_name>
-    k-NN 임베딩 검색을 실행합니다.
-    """
-    q = request.GET.get('q', '').strip()
-    if not q:
-        return JsonResponse({"error": "q 파라미터가 필요합니다."}, status=400)
-
-    top_k = int(request.GET.get('top_k', 5))
-    idx   = request.GET.get('index')
-
-    args = ['opensearch_service', q, '--top_k', str(top_k)]
-    if idx:
-        args += ['--index', idx]
-
-    try:
-        buf = io.StringIO()
-        call_command(*args, stdout=buf)
-        return CustomResponse(
-            is_success=True,
-            code=GeneralSuccessCode.OK[0],
-            message=GeneralSuccessCode.OK[1],
-            result={"message": buf.getvalue()},
-            status=GeneralSuccessCode.OK[2],
-        )
-    except Exception as e:
-        return CustomResponse(
-            is_success=False,
-            code=GeneralErrorCode.INTERNAL_SERVER_ERROR[0],
-            message=GeneralErrorCode.INTERNAL_SERVER_ERROR[1],
-            result={"error": str(e)},
-            status=GeneralErrorCode.INTERNAL_SERVER_ERROR[2],
-        )
+        return JsonResponse({"error": str(e)}, status=500)

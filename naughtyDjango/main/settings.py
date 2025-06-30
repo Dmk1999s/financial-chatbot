@@ -100,7 +100,7 @@ WSGI_APPLICATION = 'main.wsgi.application'
 # https://docs.djangoproject.com/en/5.1/ref/settings/#databases
 
 DATABASES = {
-    'default': {
+    'secondary': {
         'ENGINE': 'django.db.backends.mysql',
         'NAME': 'config',
         'USER': os.getenv('DB_USER'),
@@ -112,7 +112,7 @@ DATABASES = {
             #'auth_plugin': 'caching_sha2_password',  # 필수 추가[2][6]
         }
     },
-    'secondary': {
+    'default': {
         'ENGINE': 'django.db.backends.mysql',
         'NAME': 'ncdb',
         'USER': os.getenv('DB_USER'),
