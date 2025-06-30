@@ -9,3 +9,8 @@ class CustomResponse(Response):
             "result": result
         }
         super().__init__(data, status=status)
+
+class BadRequestException(Exception):
+    def __init__(self, message="잘못된 요청입니다."):
+        self.message = message
+        super().__init__(self.message)
