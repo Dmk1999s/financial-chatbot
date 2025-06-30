@@ -6,6 +6,7 @@ from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 from rest_framework.decorators import api_view
 
+from chat.opensearch_client import search_financial_products
 from chat.rag.financial_product_rag import answer_financial_question
 from chat.models import ChatMessage, InvestmentProfile
 
@@ -271,3 +272,19 @@ def save_investment_profile(request):
             result={"error": str(e)},
             status=GeneralErrorCode.INTERNAL_SERVER_ERROR[2],
         )
+
+@api_view(["GET"])
+def product_search(request):
+    q  = request.GET.get("q", "")
+    k  = int(request.GET.get("k", 5))
+    pt = request.GET.get("type")  # optional: 예금, 적금, 연금, stock 등
+
+    if not q:
+        return JsonResponse({"error": "q 파라미터가 필요합니다."}, status=400)
+
+    hits = search_financial_products(
+        query=q,
+        top_k=k,
+        product_type=pt
+    )
+    return JsonResponse({"results": hits}, status=200, json_dumps_params={"ensure_ascii": False})
