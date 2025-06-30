@@ -5,7 +5,9 @@ from django.views.decorators.csrf import csrf_exempt
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 from rest_framework.decorators import api_view
-
+import io
+from django.core.management import call_command
+from rest_framework.decorators import api_view
 from chat.opensearch_client import search_financial_products
 from chat.rag.financial_product_rag import answer_financial_question
 from chat.models import ChatMessage, InvestmentProfile
@@ -288,3 +290,50 @@ def product_search(request):
         product_type=pt
     )
     return JsonResponse({"results": hits}, status=200, json_dumps_params={"ensure_ascii": False})
+
+# ===== OpenSearch 인덱싱 즉시 실행 =====
+@api_view(['POST'])
+def api_index_opensearch(request):
+    """
+    POST /api/opensearch/index/
+    RDS → OpenSearch bulk 인덱싱을 즉시 실행합니다.
+    """
+    try:
+        buf = io.StringIO()
+        call_command('index_to_opensearch', stdout=buf)
+        return JsonResponse(
+            {"message": buf.getvalue()},
+            status=200,
+            json_dumps_params={"ensure_ascii": False}
+        )
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=500)
+
+# ===== OpenSearch 검색 즉시 실행 =====
+@api_view(['GET'])
+def api_search_opensearch(request):
+    """
+    GET /api/opensearch/search/?q=<query>&top_k=<num>&index=<index_name>
+    k-NN 임베딩 검색을 실행합니다.
+    """
+    q = request.GET.get('q', '').strip()
+    if not q:
+        return JsonResponse({"error": "q 파라미터가 필요합니다."}, status=400)
+
+    top_k = int(request.GET.get('top_k', 5))
+    idx   = request.GET.get('index')
+
+    args = ['opensearch_service', q, '--top_k', str(top_k)]
+    if idx:
+        args += ['--index', idx]
+
+    try:
+        buf = io.StringIO()
+        call_command(*args, stdout=buf)
+        return JsonResponse(
+            {"result": buf.getvalue()},
+            status=200,
+            json_dumps_params={"ensure_ascii": False}
+        )
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=500)

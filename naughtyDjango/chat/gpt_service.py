@@ -9,6 +9,8 @@ from langchain_core.runnables.history import RunnableWithMessageHistory
 from main.models import User
 from functools import partial
 from main.models import ChatMessage, InvestmentProfile, User
+from chat.models import ChatMessage, InvestmentProfile
+from django.contrib.auth.models import User
 import re
 import ast
 import json
