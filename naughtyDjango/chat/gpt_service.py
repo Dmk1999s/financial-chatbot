@@ -6,7 +6,8 @@ from langchain_core.messages import HumanMessage, AIMessage
 from langchain_community.chat_message_histories import ChatMessageHistory
 from langchain_core.runnables import RunnableLambda
 from langchain_core.runnables.history import RunnableWithMessageHistory
-from main.models import ChatMessage, InvestmentProfile, User
+from chat.models import ChatMessage, InvestmentProfile
+from django.contrib.auth.models import User
 import re
 import json
 from django.db import transaction
