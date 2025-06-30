@@ -11,7 +11,7 @@ from rest_framework.decorators import api_view
 from chat.opensearch_client import search_financial_products
 from chat.rag.financial_product_rag import answer_financial_question
 from chat.models import ChatMessage, InvestmentProfile
-from main.utils.custom_response import CustomResponse
+from main.utils.custom_response import CustomResponse, BadRequestException
 from main.constants.error_codes import GeneralErrorCode
 from main.constants.success_codes import GeneralSuccessCode
 from chat.gpt_service import handle_chat, get_session_id, extract_json_from_response
@@ -273,19 +273,48 @@ def save_investment_profile(request):
 
 @api_view(["GET"])
 def product_search(request):
-    q  = request.GET.get("q", "")
-    k  = int(request.GET.get("k", 5))
-    pt = request.GET.get("type")  # optional: 예금, 적금, 연금, stock 등
+    try:
+        q  = request.GET.get("q", "")
+        k  = int(request.GET.get("k", 5))
+        pt = request.GET.get("type")  # optional: 예금, 적금, 연금, stock 등
 
-    if not q:
-        return JsonResponse({"error": "q 파라미터가 필요합니다."}, status=400)
+        if not q:
+            return BadRequestException("q 파라미터가 필요합니다.")
 
-    hits = search_financial_products(
-        query=q,
-        top_k=k,
-        product_type=pt
-    )
-    return JsonResponse({"results": hits}, status=200, json_dumps_params={"ensure_ascii": False})
+
+        hits = search_financial_products(
+            query=q,
+            top_k=k,
+            product_type=pt
+        )
+        return CustomResponse(
+            is_success=True,
+            code=GeneralSuccessCode.OK[0],
+            message=GeneralSuccessCode.OK[1],
+            result={"message": hits},
+            status=GeneralSuccessCode.OK[2],
+        )
+
+
+    except BadRequestException as e:
+        return CustomResponse(
+            is_success=False,
+            code=GeneralErrorCode.BAD_REQUEST[0],
+            message=str(e),
+            result={"error": str(e)},
+            status=GeneralErrorCode.BAD_REQUEST[2],
+        )
+
+    except Exception as e:
+        return CustomResponse(
+            is_success=False,
+            code=GeneralErrorCode.INTERNAL_SERVER_ERROR[0],
+            message=GeneralErrorCode.INTERNAL_SERVER_ERROR[1],
+            result={"error": str(e)},
+            status=GeneralErrorCode.INTERNAL_SERVER_ERROR[2],
+        )
+
+
 
 # ===== OpenSearch 인덱싱 즉시 실행 =====
 @api_view(['POST'])
@@ -297,13 +326,21 @@ def api_index_opensearch(request):
     try:
         buf = io.StringIO()
         call_command('index_to_opensearch', stdout=buf)
-        return JsonResponse(
-            {"message": buf.getvalue()},
-            status=200,
-            json_dumps_params={"ensure_ascii": False}
+        return CustomResponse(
+            is_success=True,
+            code=GeneralSuccessCode.OK[0],
+            message=GeneralSuccessCode.OK[1],
+            result={"message": buf.getvalue()},
+            status=GeneralSuccessCode.OK[2],
         )
     except Exception as e:
-        return JsonResponse({"error": str(e)}, status=500)
+        return CustomResponse(
+            is_success=False,
+            code=GeneralErrorCode.INTERNAL_SERVER_ERROR[0],
+            message=GeneralErrorCode.INTERNAL_SERVER_ERROR[1],
+            result={"error": str(e)},
+            status=GeneralErrorCode.INTERNAL_SERVER_ERROR[2],
+        )
 
 # ===== OpenSearch 검색 즉시 실행 =====
 @api_view(['GET'])
@@ -326,10 +363,18 @@ def api_search_opensearch(request):
     try:
         buf = io.StringIO()
         call_command(*args, stdout=buf)
-        return JsonResponse(
-            {"result": buf.getvalue()},
-            status=200,
-            json_dumps_params={"ensure_ascii": False}
+        return CustomResponse(
+            is_success=True,
+            code=GeneralSuccessCode.OK[0],
+            message=GeneralSuccessCode.OK[1],
+            result={"message": buf.getvalue()},
+            status=GeneralSuccessCode.OK[2],
         )
     except Exception as e:
-        return JsonResponse({"error": str(e)}, status=500)
+        return CustomResponse(
+            is_success=False,
+            code=GeneralErrorCode.INTERNAL_SERVER_ERROR[0],
+            message=GeneralErrorCode.INTERNAL_SERVER_ERROR[1],
+            result={"error": str(e)},
+            status=GeneralErrorCode.INTERNAL_SERVER_ERROR[2],
+        )
