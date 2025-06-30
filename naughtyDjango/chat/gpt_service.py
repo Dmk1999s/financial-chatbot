@@ -19,8 +19,7 @@ load_dotenv()
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 fine_tuned_model = "ft:gpt-3.5-turbo-0125:personal::BDpYRjbn"
 store = {}
-SESSION_TEMP_STORE = {}  # session_id: dict
-
+SESSION_TEMP_STORE = {}
 REQUIRED_KEYS = {
     "age", "risk_tolerance", "income_stability", "income_sources",
     "income", "period", "expected_income", "expected_loss",
@@ -28,7 +27,7 @@ REQUIRED_KEYS = {
     "risk_acceptance_level", "investment_concern"
 }
 
-prompt = f"""
+finetune_prompt = f"""
 1. 너는 금융상품 추천 어플에 탑재된 챗봇이며, 이름은 '챗봇'이다.
 2. 한국어로 존댓말을 사용해야 한다.
 3. 사용자에게 다음 항목을 순서대로 물어봐야 한다:
@@ -49,6 +48,29 @@ prompt = f"""
 4. 각 항목을 사용자가 모두 응답하면 "이제 금융상품을 추천해줄게요!" 라는 말을 하며 대화를 끝낸다.
 """
 
+gpt_prompt = """
+너는 오직 JSON 객체만 반환하는 파서야.
+절대 질문이나 대답 없이 JSON만 응답해. 이 외의 텍스트는 허용되지 않아.
+다음은 JSON 예시야:
+{
+  "age": 25,
+  "income": 4000000,
+  "income_sources": "아르바이트",
+  "income_stability": "불안정",
+  "period": 30,
+  "expected_income": 300000,
+  "expected_loss": 100000,
+  "purpose": "단기 수익",
+  "asset_allocation_type": 2,
+  "value_growth": 1,
+  "risk_acceptance_level": 3,
+  "investment_concern": "무슨 주식을 사야 할지 모르겠어요",
+  "risk_tolerance": "중간"
+}
+모든 항목이 없을 경우에는 반드시 빈 객체만 출력해: {}
+JSON 외의 문장이 한 줄이라도 있으면 오류야. 반드시 지켜.
+"""
+
 def get_session_id(request_data):
     return request_data.get("session_id", str(uuid.uuid4()))
 
@@ -61,9 +83,6 @@ def convert_history_to_openai_format(history):
     role_map = {"human": "user", "ai": "assistant", "system": "system"}
     return [{"role": role_map.get(msg.type, msg.type), "content": msg.content} for msg in history]
 
-def has_required_keys(parsed: dict) -> bool:
-    return all(k in parsed and parsed[k] is not None for k in REQUIRED_KEYS)
-
 def run_gpt(input_data, config, ai_model):
     user_input = input_data["input"]
     session_id = config.get("configurable", {}).get("session_id")
@@ -75,7 +94,7 @@ def run_gpt(input_data, config, ai_model):
         missing_keys = [key for key in REQUIRED_KEYS if key not in current_data or current_data[key] is None]
 
     # 기본 프롬프트 + 누락된 키에 대한 질문 유도
-    base_prompt = input_data.get("system_prompt", prompt)
+    base_prompt = input_data.get("system_prompt", finetune_prompt)
     prompt_addition = ""
     if missing_keys:
         prompt_addition = (
@@ -104,28 +123,7 @@ def run_gpt(input_data, config, ai_model):
 def call_gpt_model(prompt: str, session_id: str) -> str:
     input_data = {
         "input": prompt,
-        "system_prompt": (
-                "너는 오직 JSON 객체만 반환하는 파서야.\n"
-                "절대 질문이나 설명 없이 JSON만 응답해. 이 외의 텍스트는 허용되지 않아.\n"
-                "다음은 JSON 예시야:\n"
-                "{\n"
-                "  \"age\": 25,\n"
-                "  \"income\": 4000000,\n"
-                "  \"income_sources\": \"아르바이트\",\n"
-                "  \"income_stability\": \"불안정\",\n"
-                "  \"period\": 30,\n"
-                "  \"expected_income\": 300000,\n"
-                "  \"expected_loss\": 100000,\n"
-                "  \"purpose\": \"단기 수익\",\n"
-                "  \"asset_allocation_type\": 2,\n"
-                "  \"value_growth\": 1,\n"
-                "  \"risk_acceptance_level\": 3,\n"
-                "  \"investment_concern\": \"무슨 주식을 사야 할지 모르겠어요\",\n"
-                "  \"risk_tolerance\": \"중간\"\n"
-                "}\n"
-                "모든 항목이 없을 경우에는 반드시 빈 객체인 `{}` 만 출력해.\n"
-                "JSON 외의 문장이 한 줄이라도 있으면 오류야. 반드시 지켜.\n"
-        )
+        "system_prompt": gpt_prompt
     }
 
     config = {
@@ -135,16 +133,6 @@ def call_gpt_model(prompt: str, session_id: str) -> str:
     }
 
     return run_gpt(input_data, config, "gpt-3.5-turbo")["output"]
-
-def extract_json_from_response(response_text: str) -> dict:
-    try:
-        # 중괄호로 둘러싸인 JSON 블록 추출
-        json_text = re.search(r'{.*}', response_text, re.DOTALL).group()
-        print(f"❗ JSON 추출 결과: {json.loads(json_text)}")
-        return json.loads(json_text)
-    except Exception as e:
-        print(f"❗ JSON 추출 실패: {e}")
-        return {}
 
 def extract_fields_from_natural_response(response_text: str, session_id: str) -> dict:
     gpt_raw = call_gpt_model(response_text, session_id)
@@ -187,7 +175,7 @@ def save_profile_from_gpt(parsed_data, user_id, session_id):
         user.age = parsed_data.get("age")
         user.income_stability = parsed_data.get("income_stability")
         user.expected_loss = parsed_data.get("expected_loss")
-        #session_id=session_id,
+        session_id=session_id,
         user.risk_tolerance=parsed_data.get("risk_tolerance")
         user.income_source=parsed_data.get("income_sources")
         user.income=parsed_data.get("income")
