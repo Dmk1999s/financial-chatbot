@@ -38,6 +38,9 @@ services:
       - media_volume:/home/app/web/media
     depends_on:
       - db
+    networks:
+        - app-network
+
   nginx:
     container_name: nginx
     build:
