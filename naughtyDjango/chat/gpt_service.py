@@ -6,7 +6,8 @@ from langchain_core.messages import HumanMessage, AIMessage
 from langchain_community.chat_message_histories import ChatMessageHistory
 from langchain_core.runnables import RunnableLambda
 from langchain_core.runnables.history import RunnableWithMessageHistory
-from main.models import User
+from chat.models import ChatMessage, InvestmentProfile
+from django.contrib.auth.models import User
 import re
 import json
 from django.db import transaction
@@ -28,6 +29,7 @@ def get_session_history(session_id: str):
 def convert_history_to_openai_format(history):
     role_map = {"human": "user", "ai": "assistant", "system": "system"}
     return [{"role": role_map.get(msg.type, msg.type), "content": msg.content} for msg in history]
+
 prompt = f"""
 1. 너는 금융상품 추천 어플에 탑재된 챗봇이며, 이름은 '챗봇'이다.
 2. 한국어로 존댓말을 사용해야 한다.
@@ -64,7 +66,6 @@ prompt = f"""
     }}
 """
 
-
 def run_gpt(input_data, config):
     user_input = input_data["input"]
     system_prompt = input_data.get("system_prompt", prompt)
@@ -83,18 +84,22 @@ def run_gpt(input_data, config):
     )
     return {"output": response.choices[0].message.content}
 
+
+
 def extract_json_from_response(text: str):
     try:
+        # 백틱 블럭 제거 (```json ~ ```)
         cleaned_text = re.sub(r"```json|```", "", text).strip()
 
+        # 중괄호 감싸진 JSON 텍스트 추출
         match = re.search(r"\{.*\}", cleaned_text, re.DOTALL)
         if match:
-            json_str = match.group()
-            return json.loads(json_str)
+            return json.loads(match.group())
         else:
             print("[⚠️] JSON 형식이 아님")
             return {}
-    except Exception as e:
+    except Exception:
+        # 파싱 중 에러나면 빈 dict 반환
         return {}
 
 # Runnable 구성
@@ -135,23 +140,26 @@ def save_profile_from_gpt(parsed_data, user_id, session_id):
 views.py에 제공하는 함수
 """
 def handle_chat(user_input, session_id, user_id=None):
-    result = with_message_history.invoke(
+    # 1) 메시지 히스토리 호출
+    result    = with_message_history.invoke(
         {"input": user_input},
         config={"configurable": {"session_id": session_id}}
     )
     gpt_reply = result["output"]
 
-
+    # 2) JSON 응답 포맷인지 대략 확인
     if "{" in gpt_reply and "}" in gpt_reply:
         parsed = extract_json_from_response(gpt_reply)
 
+        # 3) 프로필 저장에 필요한 키들
         required_keys = [
             "age", "risk_tolerance", "income_stability", "income_sources",
-            "income", "period", "expected_income", "expected_loss",
-            "purpose", "asset_allocation_type", "value_growth",
+            "monthly_income", "investment_horizon", "expected_return", "expected_loss",
+            "investment_purpose", "asset_allocation_type", "value_growth",
             "risk_acceptance_level", "investment_concern"
         ]
 
+        # 4) 모든 키가 파싱된 딕셔너리에 있고, 값이 None 이 아니면 저장
         if all(k in parsed and parsed[k] is not None for k in required_keys):
             if user_id:
                 save_profile_from_gpt(parsed, user_id, session_id)

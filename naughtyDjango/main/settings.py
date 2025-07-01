@@ -26,8 +26,6 @@ print("DB_USER:", env('DB_USER', default='NOT FOUND'))
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
-
-
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.1/howto/deployment/checklist/
 
@@ -43,19 +41,12 @@ ALLOWED_HOSTS = ['*']
 
 # Application definition
 
-# settings.py
-SWAGGER_SETTINGS = {
-    'USE_SESSION_AUTH': False,  # 로그인 세션 없이 접근 가능하게
-    #'LOGIN_URL': '/admin/login/',
-    #'LOGOUT_URL': '/admin/logout/',
-}
-
 INSTALLED_APPS = [
-    #'django.contrib.admin',
+    'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
-    #'django.contrib.sessions',
-    #'django.contrib.messages',
+    'django.contrib.sessions',
+    'django.contrib.messages',
     'django.contrib.staticfiles',
     'chat',
     'drf_yasg',
@@ -79,7 +70,7 @@ MIDDLEWARE = [
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
-    #'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
@@ -109,7 +100,7 @@ WSGI_APPLICATION = 'main.wsgi.application'
 # https://docs.djangoproject.com/en/5.1/ref/settings/#databases
 
 DATABASES = {
-    'default': {
+    'secondary': {
         'ENGINE': 'django.db.backends.mysql',
         'NAME': 'config',
         'USER': os.getenv('DB_USER'),
@@ -121,7 +112,7 @@ DATABASES = {
             #'auth_plugin': 'caching_sha2_password',  # 필수 추가[2][6]
         }
     },
-    'secondary': {
+    'default': {
         'ENGINE': 'django.db.backends.mysql',
         'NAME': 'ncdb',
         'USER': os.getenv('DB_USER'),
@@ -154,6 +145,7 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
+DEFAULT_CHARSET = 'utf-8'
 
 # Internationalization
 # https://docs.djangoproject.com/en/5.1/topics/i18n/
