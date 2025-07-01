@@ -83,15 +83,38 @@ def convert_history_to_openai_format(history):
     role_map = {"human": "user", "ai": "assistant", "system": "system"}
     return [{"role": role_map.get(msg.type, msg.type), "content": msg.content} for msg in history]
 
+def check_conflict(current_data, new_fields):
+    conflicting_fields = []
+    for key, new_value in new_fields.items():
+        if key in current_data and current_data[key] != new_value:
+            conflicting_fields.append((key, current_data[key], new_value))
+    return conflicting_fields
+
 def run_gpt(input_data, config, ai_model):
     user_input = input_data["input"]
     session_id = config.get("configurable", {}).get("session_id")
+    user_id = config.get("configurable", {}).get("user_id")
+
+    current_data = SESSION_TEMP_STORE.get(session_id, {})
+    new_fields = extract_fields_from_natural_response(user_input, session_id)
+
+    # 프로필 충돌 확인
+    conflicts = check_conflict(current_data, new_fields)
+
+    if conflicts:
+        # 사용자에게 업데이트 여부 질문 유도
+        conflict_messages = "\n".join(
+            f"- {k}: 기존 '{old}' vs 입력 '{new}'"
+            for k, old, new in conflicts
+        )
+        clarification = (
+            f"입력하신 정보가 기존 프로필과 다릅니다:\n{conflict_messages}\n"
+            "프로필을 업데이트할까요? '네' 또는 '아니오'로 답해주세요."
+        )
+        return {"output": clarification}
 
     # 현재 누락된 필드 추적
-    missing_keys = []
-    if session_id in SESSION_TEMP_STORE:
-        current_data = SESSION_TEMP_STORE[session_id]
-        missing_keys = [key for key in REQUIRED_KEYS if key not in current_data or current_data[key] is None]
+    missing_keys = [key for key in REQUIRED_KEYS if key not in current_data or current_data[key] is None]
 
     # 기본 프롬프트 + 누락된 키에 대한 질문 유도
     base_prompt = input_data.get("system_prompt", finetune_prompt)
@@ -132,7 +155,20 @@ def call_gpt_model(prompt: str, session_id: str) -> str:
         }
     }
 
-    return run_gpt(input_data, config, "gpt-3.5-turbo")["output"]
+    return _run_gpt_parser(input_data, config, "gpt-3.5-turbo")["output"]
+
+def _run_gpt_parser(input_data, config, model):
+    messages = [
+        {"role": "system", "content": input_data["system_prompt"]},
+        {"role": "user", "content": input_data["input"]}
+    ]
+    response = client.chat.completions.create(
+        model=model,
+        messages=messages,
+        temperature=0.0,
+    )
+    return {"output": response.choices[0].message.content}
+
 
 def extract_fields_from_natural_response(response_text: str, session_id: str) -> dict:
     gpt_raw = call_gpt_model(response_text, session_id)
