@@ -100,10 +100,10 @@ def chat_with_gpt(request):
         if not message:
             return CustomResponse(
                 is_success=False,
-                code=GeneralErrorCode.INVALID_REQUEST[0],
+                code=GeneralErrorCode.BAD_REQUEST[0],
                 message="`message` 파라미터가 필요합니다.",
                 result={},
-                status=GeneralErrorCode.INVALID_REQUEST[2],
+                status=GeneralErrorCode.BAD_REQUEST[2],
             )
 
         # 1) 사용자 메시지 저장
@@ -294,24 +294,33 @@ def get_chat_history(request, username):
     request_body=openapi.Schema(
         type=openapi.TYPE_OBJECT,
         properties={
-            "session_id": openapi.Schema(type=openapi.TYPE_STRING),
-            "user_id":    openapi.Schema(type=openapi.TYPE_STRING),
-            "investment_profile": openapi.Schema(
-                type=openapi.TYPE_OBJECT,
-                properties={
-                    "risk_tolerance": openapi.Schema(type=openapi.TYPE_STRING),
-                    "age":            openapi.Schema(type=openapi.TYPE_INTEGER),
-                    "income_stability": openapi.Schema(type=openapi.TYPE_STRING),
-                    "income_sources":   openapi.Schema(type=openapi.TYPE_STRING),
-                    "monthly_income":   openapi.Schema(type=openapi.TYPE_NUMBER),
-                    "investment_horizon": openapi.Schema(type=openapi.TYPE_STRING),
-                    "expected_return":   openapi.Schema(type=openapi.TYPE_STRING),
-                    "expected_loss":     openapi.Schema(type=openapi.TYPE_STRING),
-                    "investment_purpose": openapi.Schema(type=openapi.TYPE_STRING),
-                },
+            "username": openapi.Schema(
+                type=openapi.TYPE_STRING,
+                description="사용자 ID"
+            ),
+            "product_type": openapi.Schema(
+                type=openapi.TYPE_STRING,
+                description="상품 유형 (예금, 적금, 연금, stock 중 하나)"
+            ),
+            "session_id": openapi.Schema(
+                type=openapi.TYPE_STRING,
+                description="세션 ID (선택사항, 없으면 서버에서 생성)"
+            ),
+            "query": openapi.Schema(
+                type=openapi.TYPE_STRING,
+                description="추천을 위한 사용자 질문/요청"
+            ),
+            "top_k": openapi.Schema(
+                type=openapi.TYPE_INTEGER,
+                description="추천할 결과 개수 (기본값: 3)",
+                default=3
+            ),
+            "index": openapi.Schema(
+                type=openapi.TYPE_STRING,
+                description="검색에 사용할 OpenSearch 인덱스 이름 (기본값: 'financial-products')",
+                default="financial-products"
             ),
         },
-        required=["session_id", "user_id", "investment_profile"],
     ),
     responses={200: openapi.Response("성공", openapi.Schema(
         type=openapi.TYPE_OBJECT,
@@ -345,10 +354,10 @@ def recommend_products(request):
         if not query:
             return CustomResponse(
                 is_success=False,
-                code=GeneralErrorCode.INVALID_REQUEST[0],
+                code=GeneralErrorCode.BAD_REQUEST[0],
                 message="`query` 파라미터가 필요합니다.",
                 result={},
-                status=GeneralErrorCode.INVALID_REQUEST[2]
+                status=GeneralErrorCode.BAD_REQUEST[2]
             )
 
         # (1) 사용자 메시지 저장
