@@ -7,7 +7,7 @@ services:
     restart: always
     environment:
       MYSQL_ROOT_HOST: '%'
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-mysql}
     ports:
       - "3307:3306"
     env_file:
@@ -57,3 +57,6 @@ volumes:
   dbdata:
   static_volume:
   media_volume:
+
+networks:
+  app-network:
