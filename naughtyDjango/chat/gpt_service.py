@@ -6,9 +6,11 @@ from langchain_core.messages import HumanMessage, AIMessage
 from langchain_community.chat_message_histories import ChatMessageHistory
 from langchain_core.runnables import RunnableLambda
 from langchain_core.runnables.history import RunnableWithMessageHistory
+
 from main.models import User
 from functools import partial
 from main.models import User
+
 from django.contrib.auth.models import User
 import re
 import ast
@@ -95,18 +97,22 @@ def check_conflict(current_data, new_fields):
     return conflicting_fields
 
 
+
+
 def extract_json_from_response(text: str):
     try:
+        # 백틱 블럭 제거 (```json ~ ```)
         cleaned_text = re.sub(r"```json|```", "", text).strip()
 
+        # 중괄호 감싸진 JSON 텍스트 추출
         match = re.search(r"\{.*\}", cleaned_text, re.DOTALL)
         if match:
-            json_str = match.group()
-            return json.loads(json_str)
+            return json.loads(match.group())
         else:
             print("❗ JSON 형식이 아님. 응답 없음으로 처리합니다.")
             return {}
-    except Exception as e:
+    except Exception:
+        # 파싱 중 에러나면 빈 dict 반환
         return {}
 
 
