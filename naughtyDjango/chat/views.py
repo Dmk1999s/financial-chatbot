@@ -13,8 +13,7 @@ from django.core.management import call_command
 from rest_framework.decorators import api_view
 from rest_framework.permissions import AllowAny
 
-from chat.opensearch_client import search_financial_products
-from chat.rag.financial_product_rag import answer_financial_question
+from chat.gpt_service import extract_json_from_response
 from chat.models import ChatMessage, InvestmentProfile
 
 from main.models import User
