@@ -8,13 +8,14 @@ from langchain_core.runnables import RunnableLambda
 from langchain_core.runnables.history import RunnableWithMessageHistory
 from main.models import User
 from functools import partial
-from main.models import ChatMessage, InvestmentProfile, User
-from chat.models import ChatMessage, InvestmentProfile
+from main.models import User
 from django.contrib.auth.models import User
 import re
 import ast
 import json
-import openai
+from openai import OpenAI
+
+client = OpenAI()
 
 
 load_dotenv()
@@ -93,17 +94,70 @@ def check_conflict(current_data, new_fields):
             conflicting_fields.append((key, current_data[key], new_value))
     return conflicting_fields
 
+
+def extract_json_from_response(text: str):
+    try:
+        cleaned_text = re.sub(r"```json|```", "", text).strip()
+
+        match = re.search(r"\{.*\}", cleaned_text, re.DOTALL)
+        if match:
+            json_str = match.group()
+            return json.loads(json_str)
+        else:
+            print("❗ JSON 형식이 아님. 응답 없음으로 처리합니다.")
+            return {}
+    except Exception as e:
+        return {}
+
+
+def extract_fields_from_natural_response(response_text: str, session_id: str) -> dict:
+    prompt = f"""
+    아래 문장에서 사용자의 재무 성향 정보를 추출해서 JSON 형식으로 반환해줘.
+    가능한 필드만 채워줘. 불확실한 건 생략해도 좋아.
+
+    문장: "{response_text}"
+
+    반환 예시:
+    {{
+        "age": 30,
+        "income": 5000,
+        "risk_tolerance": "중간"
+    }}
+    """
+
+    response = client.chat.completions.create(model="gpt-4",
+    messages=[
+        {"role": "system", "content": "너는 사용자의 재무 정보를 추출해 JSON으로 정리하는 분석가야."},
+        {"role": "user", "content": prompt}
+    ],
+    temperature=0.3)
+
+    content = response.choices[0].message.content
+
+    try:
+        return extract_json_from_response(content)
+    except Exception:
+        return {}
+
 def run_gpt(input_data, config, ai_model):
     user_input = input_data["input"]
     session_id = config.get("configurable", {}).get("session_id")
     user_id = config.get("configurable", {}).get("user_id")
+
+    if user_input.strip() in ["네", "아니오"] and "conflict_pending" in SESSION_TEMP_STORE:
+        pending = SESSION_TEMP_STORE.pop("conflict_pending")
+        if user_input.strip() == "네":
+            # 충돌 항목을 저장
+            SESSION_TEMP_STORE[session_id].update(pending)
+            return {"output": "프로필이 성공적으로 업데이트되었습니다. 계속 진행할게요."}
+        else:
+            return {"output": "기존 프로필 정보를 유지합니다. 계속 진행할게요."}
 
     current_data = SESSION_TEMP_STORE.get(session_id, {})
     new_fields = extract_fields_from_natural_response(user_input, session_id)
 
     # 프로필 충돌 확인
     conflicts = check_conflict(current_data, new_fields)
-
     if conflicts:
         # 사용자에게 업데이트 여부 질문 유도
         conflict_messages = "\n".join(
@@ -114,6 +168,9 @@ def run_gpt(input_data, config, ai_model):
             f"입력하신 정보가 기존 프로필과 다릅니다:\n{conflict_messages}\n"
             "프로필을 업데이트할까요? '네' 또는 '아니오'로 답해주세요."
         )
+        SESSION_TEMP_STORE["conflict_pending"] = {
+            k: new for k, _, new in conflicts
+        }
         return {"output": clarification}
 
     # 현재 누락된 필드 추적
@@ -171,20 +228,6 @@ def _run_gpt_parser(input_data, config, model):
         temperature=0.0,
     )
     return {"output": response.choices[0].message.content}
-
-def extract_json_from_response(text: str):
-    try:
-        cleaned_text = re.sub(r"```json|```", "", text).strip()
-
-        match = re.search(r"\{.*\}", cleaned_text, re.DOTALL)
-        if match:
-            json_str = match.group()
-            return json.loads(json_str)
-        else:
-            print("❗ JSON 형식이 아님. 응답 없음으로 처리합니다.")
-            return {}
-    except Exception as e:
-        return {}
 
 run_gpt_with_model = partial(run_gpt, ai_model=fine_tuned_model)
 # Runnable 구성
