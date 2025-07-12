@@ -13,13 +13,18 @@ from django.core.management import call_command
 from rest_framework.decorators import api_view
 from rest_framework.permissions import AllowAny
 
+from chat.gpt_service import extract_json_from_response
+from chat.models import ChatMessage, InvestmentProfile
+
 from chat.opensearch_client import search_financial_products
 from chat.rag.financial_product_rag import answer_financial_question
 from chat.models import ChatMessage, InvestmentProfile
 from main.utils.custom_response import CustomResponse
 from main.constants.error_codes import GeneralErrorCode
 from main.constants.success_codes import GeneralSuccessCode
-from chat.gpt_service import handle_chat, get_session_id, extract_json_from_response
+
+from chat.gpt_service import handle_chat, get_session_id
+from chat.serializers import ChatRequestSerializer, InvestmentProfileSerializer, SaveInvestmentProfileRequestSerializer, RecommendProductRequestSerializer
 
 import json
 
@@ -201,7 +206,7 @@ def chat_with_gpt(request):
             role="assistant",
             message=gpt_reply,
         )
-
+        
         return CustomResponse(
             is_success=True,
             code=GeneralSuccessCode.OK[0],
