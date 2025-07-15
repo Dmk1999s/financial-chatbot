@@ -8,7 +8,7 @@ on:
       - closed
   push:
     branches:
-      - main
+      - feature/#10-https
 
 jobs: # 아래의 jobs를 수행
 
