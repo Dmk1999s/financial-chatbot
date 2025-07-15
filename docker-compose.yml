@@ -41,7 +41,7 @@ services:
       - .:/app
       - static_volume:/home/app/web/static  # ✅ static 파일을 volume에 저장
       - media_volume:/home/app/web/media
-      - /etc/letsencrypt:/etc/letsencrypt:ro
+      - /etc/nginx-certs:/etc/nginx-certs:ro
     depends_on:
       db:
         condition: service_healthy
