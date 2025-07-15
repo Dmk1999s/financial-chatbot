@@ -16,6 +16,11 @@ services:
       - dbdata:/var/lib/mysql
     networks:
       - app-network
+    healthcheck:
+      test: [ "CMD", "mysqladmin", "ping", "-h", "localhost" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   web:
     container_name: web
@@ -37,7 +42,8 @@ services:
       - static_volume:/home/app/web/static  # ✅ static 파일을 volume에 저장
       - media_volume:/home/app/web/media
     depends_on:
-      - db
+      db:
+        condition: service_healthy
     networks:
         - app-network
 
