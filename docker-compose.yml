@@ -27,9 +27,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    command: >
-      sh -c "cd naughtyDjango && python manage.py migrate &&
-             python manage.py runserver 0.0.0.0:8000"
     environment:
       DJANGO_SETTINGS_MODULE: main.settings  # .py는 생략
     env_file:
