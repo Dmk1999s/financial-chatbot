@@ -36,7 +36,7 @@ schema_view = get_schema_view(
 
 urlpatterns = [
     #path('admin/', admin.site.urls),
-    path('/chats', include('chat.urls')),  # /api/chat/
+    path('chats/', include('chat.urls')),  # /api/chat/
     path('', lambda request: HttpResponse("Hello from Django!")),
 
     # Swagger 설정
