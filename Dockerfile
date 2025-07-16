@@ -27,11 +27,5 @@ COPY ./config/docker/entrypoint.prod.sh /entrypoint.prod.sh
 # 실행 권한 부여
 RUN chmod +x /entrypoint.prod.sh
 
-RUN echo '[DEBUG] /app/naughtyDjango:' && ls -al /app/naughtyDjango
-RUN echo '[DEBUG] /app 전체:' && ls -al /app
-RUN echo '[DEBUG] Python 패키지:' && pip list
-RUN python -c "import sys; print('[DEBUG] sys.path:', sys.path)"
-
-
 # 엔트리포인트 지정
 ENTRYPOINT ["/entrypoint.prod.sh"]
