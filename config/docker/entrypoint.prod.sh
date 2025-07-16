@@ -3,6 +3,9 @@
 # 진입점 경로 수정
 cd /home/app/naughtyDjango
 
+# Python 경로를 명시적으로 설정
+export PYTHONPATH=/home/app/naughtyDjango
+
 # 마이그레이션, collectstatic 등 필요한 커맨드
 python manage.py migrate
 python manage.py collectstatic --noinput
