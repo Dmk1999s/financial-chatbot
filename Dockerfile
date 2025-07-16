@@ -21,3 +21,11 @@ RUN pip install --upgrade pip && pip install -r requirements.txt
 
 # 전체 코드 복사
 COPY . .
+
+COPY ./config/docker/entrypoint.prod.sh /entrypoint.prod.sh
+
+# 실행 권한 부여
+RUN chmod +x /entrypoint.prod.sh
+
+# 엔트리포인트 지정
+ENTRYPOINT ["/entrypoint.prod.sh"]

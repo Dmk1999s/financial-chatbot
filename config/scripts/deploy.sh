@@ -33,6 +33,9 @@ echo "🚀 Starting Docker Compose..."
 
 cd /home/ubuntu/srv/ubuntu
 
+docker compose down
+docker compose up -d
+
 # 최신 컨테이너 재빌드 및 실행
 sudo docker compose down
 sudo docker compose up --build -d

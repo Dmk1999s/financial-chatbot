@@ -6,9 +6,6 @@ on:
       - main
     types:
       - closed
-  push:
-    branches:
-      - main
 
 jobs: # 아래의 jobs를 수행
 
