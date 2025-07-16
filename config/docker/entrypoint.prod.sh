@@ -8,4 +8,4 @@ python manage.py migrate
 python manage.py collectstatic --noinput
 
 # gunicorn 실행
-exec gunicorn naughtyDjango.main.wsgi:application --bind 0.0.0.0:8000
+exec gunicorn main.wsgi:application --bind 0.0.0.0:8000
