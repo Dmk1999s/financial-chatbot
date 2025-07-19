@@ -17,7 +17,7 @@ WORKDIR /app
 # 종속성 먼저 복사하고 설치 (캐시 최적화)
 COPY requirements.txt .
 
-RUN pip install --upgrade pip && pip install -r requirements.txt
+RUN pip install --upgrade pip && pip install --no-cache-dir -r requirements.txt
 
 # 전체 코드 복사
 COPY . .
