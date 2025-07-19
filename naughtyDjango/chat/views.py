@@ -291,7 +291,7 @@ def get_chat_history(request, username):
 # ===== 금융상품 추천 엔드포인트 =====
 @swagger_auto_schema(
     method="post",
-    operation_description="사용자의 투자 정보를 데이터베이스에 저장합니다.",
+    operation_description="사용자의 투자 정보를 기반으로 금융상품을 추천합니다.",
     request_body=openapi.Schema(
         type=openapi.TYPE_OBJECT,
         properties={
