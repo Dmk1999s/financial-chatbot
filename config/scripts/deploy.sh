@@ -33,6 +33,15 @@ echo "🚀 Starting Docker Compose..."
 
 cd /home/ubuntu/srv/ubuntu
 
+### 디스크 공간 확보 코드 추가
+echo "🧹 Freeing up disk space..."
+sudo apt-get clean
+sudo rm -rf /var/lib/apt/lists/*
+sudo docker system prune -af --volumes
+df -h
+echo "✅ Disk cleanup complete."
+
+# 기존 컨테이너 중지 및 실행
 docker compose down
 docker compose up -d
 
