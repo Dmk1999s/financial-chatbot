@@ -441,12 +441,10 @@ def save_investment_profile(request):
 
 
 # ===== OpenSearch 인덱싱 즉시 실행 =====
-@api_view(['POST'])
+@api_view(["POST"])
+@permission_classes([AllowAny])
+@csrf_exempt
 def api_index_opensearch(request):
-    """
-    POST /api/opensearch/index/
-    RDS → OpenSearch bulk 인덱싱을 즉시 실행합니다.
-    """
     try:
         buf = io.StringIO()
         call_command('index_to_opensearch', stdout=buf)
