@@ -158,3 +158,18 @@ class User(models.Model):
     class Meta:
         managed = True
         db_table = 'user'
+        indexes = [
+            models.Index(fields=['email']),
+            models.Index(fields=['nickname']),
+            models.Index(fields=['created_at']),
+            models.Index(fields=['updated_at']),
+            # 금융상품 추천 기준 인덱스
+            models.Index(fields=['risk_tolerance']),
+            models.Index(fields=['asset_allocation_type']),
+            models.Index(fields=['value_growth']),
+            models.Index(fields=['risk_acceptance_level']),
+            models.Index(fields=['investment_concern']),
+            # 복합 인덱스 (주요 조합)
+            models.Index(fields=['risk_tolerance', 'risk_acceptance_level']),
+            models.Index(fields=['asset_allocation_type', 'value_growth']),
+        ]
