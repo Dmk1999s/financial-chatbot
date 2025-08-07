@@ -15,17 +15,17 @@ from rest_framework.decorators import api_view
 from rest_framework.permissions import AllowAny
 
 from chat.gpt_service import extract_json_from_response
-from chat.models import ChatMessage, InvestmentProfile
+from chat.models import ChatMessage
+from main.models import User
 
 from chat.opensearch_client import search_financial_products
 from chat.rag.financial_product_rag import answer_financial_question
-from chat.models import ChatMessage, InvestmentProfile
 from main.utils.custom_response import CustomResponse
 from main.constants.error_codes import GeneralErrorCode
 from main.constants.success_codes import GeneralSuccessCode
 
 from chat.gpt_service import handle_chat, get_session_id
-from chat.serializers import ChatRequestSerializer, InvestmentProfileSerializer, SaveInvestmentProfileRequestSerializer, RecommendProductRequestSerializer
+from chat.serializers import ChatRequestSerializer, SaveInvestmentProfileRequestSerializer, RecommendProductRequestSerializer
 from chat.tasks import process_chat_async
 import json
 
@@ -100,10 +100,9 @@ def chat_with_gpt(request):
             )
 
         # profile 업로드
-        profile, _ = InvestmentProfile.objects.get_or_create(
-            session_id=session_id,
-            user_id=username,
-            defaults={}
+        user, _ = User.objects.get_or_create(
+            email=username,
+            defaults={'nickname': username}
         )
 
         # profile 업로드 확인
@@ -111,8 +110,8 @@ def chat_with_gpt(request):
             field = body.get("field")
             value = body.get("value")
             if field and value is not None:
-                setattr(profile, field, value)
-                profile.save(update_fields=[field])
+                setattr(user, field, value)
+                user.save(update_fields=[field])
                 
                 confirm_msg = f"{field} 정보를 {value}으로 업데이트했습니다."
                 ChatMessage.objects.create(
@@ -376,18 +375,19 @@ def save_investment_profile(request):
     try:
         data    = json.loads(request.body)
         profile = data.get("investment_profile", {})
-        InvestmentProfile.objects.create(
-            user_id=data.get("user_id"),
-            risk_tolerance=profile.get("risk_tolerance"),
-            age=profile.get("age"),
-            income_stability=profile.get("income_stability"),
-            income_sources=profile.get("income_sources"),
-            monthly_income=profile.get("monthly_income"),
-            investment_horizon=profile.get("investment_horizon"),
-            expected_return=profile.get("expected_return"),
-            expected_loss=profile.get("expected_loss"),
-            investment_purpose=profile.get("investment_purpose"),
+        user, _ = User.objects.get_or_create(
+            email=data.get("user_id"),
+            defaults={'nickname': data.get("user_id")}
         )
+        user.risk_tolerance = profile.get("risk_tolerance")
+        user.age = profile.get("age")
+        user.income_stability = profile.get("income_stability")
+        user.income_source = profile.get("income_sources")
+        user.income = profile.get("monthly_income")
+        user.expected_income = profile.get("expected_return")
+        user.expected_loss = profile.get("expected_loss")
+        user.purpose = profile.get("investment_purpose")
+        user.save()
         return CustomResponse(
             is_success=True,
             code=GeneralSuccessCode.OK[0],

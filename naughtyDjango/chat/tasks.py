@@ -1,7 +1,8 @@
 from celery import shared_task
 from openai import OpenAI
 import os
-from .models import ChatMessage, InvestmentProfile
+from .models import ChatMessage
+from main.models import User
 from .gpt_service import extract_json_from_response, handle_chat
 
 DETECTION_SYSTEM = """
