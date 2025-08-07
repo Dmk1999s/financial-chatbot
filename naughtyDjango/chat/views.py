@@ -4,6 +4,7 @@ import os
 from dotenv import load_dotenv
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
+
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 from openai import OpenAI
@@ -25,7 +26,7 @@ from main.constants.success_codes import GeneralSuccessCode
 
 from chat.gpt_service import handle_chat, get_session_id
 from chat.serializers import ChatRequestSerializer, InvestmentProfileSerializer, SaveInvestmentProfileRequestSerializer, RecommendProductRequestSerializer
-
+from chat.tasks import process_chat_async
 import json
 
 load_dotenv()
@@ -83,21 +84,12 @@ value_growth, risk_acceptance_level, investment_concern
 @permission_classes([AllowAny])
 @csrf_exempt
 def chat_with_gpt(request):
-    """
-    1) 사용자 메시지 저장
-    2) 변경감지 → 제안 → 확정
-    3) 일반 챗 흐름(handle_chat)
-    """
     try:
-        body       = json.loads(request.body)
-        username   = body.get("username", "")
+        body = json.loads(request.body)
+        username = body.get("username", "")
         session_id = body.get("session_id") or get_session_id(body)
-        InvestmentProfile.objects.get_or_create(
-            session_id=session_id,
-            user_id=username,
-            defaults={} # 필요한 경우에 기본값 지정 가능
-        )
-        message    = (body.get("message") or "").strip()
+        message = (body.get("message") or "").strip()
+        
         if not message:
             return CustomResponse(
                 is_success=False,
@@ -107,25 +99,21 @@ def chat_with_gpt(request):
                 status=GeneralErrorCode.BAD_REQUEST[2],
             )
 
-        # 1) 사용자 메시지 저장
-        ChatMessage.objects.create(
+        # profile 업로드
+        profile, _ = InvestmentProfile.objects.get_or_create(
             session_id=session_id,
-            username=username,
-            product_type=body.get("product_type", ""),
-            role="user",
-            message=message,
+            user_id=username,
+            defaults={}
         )
 
-        # 2) 변경 확정 처리 (프론트가 update_confirm 플래그로 전송할 때)
+        # profile 업로드 확인
         if body.get("update_confirm"):
             field = body.get("field")
             value = body.get("value")
             if field and value is not None:
-                InvestmentProfile.objects.update_or_create(
-                    session_id=session_id,
-                    user_id=username,
-                    defaults={field: value}
-                )
+                setattr(profile, field, value)
+                profile.save(update_fields=[field])
+                
                 confirm_msg = f"{field} 정보를 {value}으로 업데이트했습니다."
                 ChatMessage.objects.create(
                     session_id=session_id,
@@ -142,76 +130,53 @@ def chat_with_gpt(request):
                     status=GeneralSuccessCode.OK[2],
                 )
 
-        # 3) 변경 감지 호출
-        openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-        detect_resp = openai_client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": "system", "content": DETECTION_SYSTEM},
-                {"role": "user",   "content": message},
-            ],
-            temperature=0
-        )
-        trigger = extract_json_from_response(detect_resp.choices[0].message.content)
-
-        if isinstance(trigger, dict) and trigger:
-            field = trigger.get("field")
-            value = trigger.get("value")
-            if field and value is not None:
-                # 사용자에게 제안할 메시지 구성
-                label_map = {
-                    "risk_tolerance": "위험 허용 정도",
-                    "age": "나이",
-                    "income_stability": "소득 안정성",
-                    "income_sources": "소득원",
-                    "monthly_income": "월 수입",
-                    "investment_horizon": "투자 기간",
-                    "expected_return": "기대 수익",
-                    "expected_loss": "예상 손실",
-                    "investment_purpose": "투자 목적",
-                    "asset_allocation_type": "자산 배분 유형",
-                    "value_growth": "가치/성장 구분",
-                    "risk_acceptance_level": "위험 수용 수준",
-                    "investment_concern": "투자 관련 고민",
-                }
-                label = label_map.get(field, field)
-                propose_msg = f"{label}이(가) {value}으로 변경된 것 같아요. 프로필에도 업데이트해 드릴까요?"
-
-                ChatMessage.objects.create(
-                    session_id=session_id,
-                    username=username,
-                    product_type=body.get("product_type", ""),
-                    role="assistant",
-                    message=propose_msg,
-                )
-                return CustomResponse(
-                    is_success=True,
-                    code=GeneralSuccessCode.OK[0],
-                    message=GeneralSuccessCode.OK[1],
-                    result={
-                        "propose_update": propose_msg,
-                        "field": field,
-                        "value": value
-                    },
-                    status=GeneralSuccessCode.OK[2],
-                )
-
-        # 4) 일반 챗 흐름 (초기 프로필 수집 & Q&A)
-        gpt_reply, session_id = handle_chat(message, session_id, user_id=username)
-
+        # 메시지 저장
         ChatMessage.objects.create(
             session_id=session_id,
             username=username,
             product_type=body.get("product_type", ""),
-            role="assistant",
-            message=gpt_reply,
+            role="user",
+            message=message,
+        )
+
+        # 간단한 메시지는 빠르게 답변하도록 수정
+        simple_responses = {
+            '안녕': '안녕하세요! 무엇을 도와드릴까요?',
+            '네': '네, 말씀해 주세요.',
+            '아니오': '알겠습니다. 다른 도움이 필요하시면 말씀해 주세요.',
+        }
+        
+        if message.lower() in simple_responses:
+            quick_response = simple_responses[message.lower()]
+            ChatMessage.objects.create(
+                session_id=session_id,
+                username=username,
+                product_type=body.get("product_type", ""),
+                role="assistant",
+                message=quick_response,
+            )
+            return CustomResponse(
+                is_success=True,
+                code=GeneralSuccessCode.OK[0],
+                message=GeneralSuccessCode.OK[1],
+                result={"response": quick_response, "session_id": session_id},
+                status=GeneralSuccessCode.OK[2],
+            )
+
+        # celery 이용
+        task = process_chat_async.delay(
+            session_id, username, message, body.get("product_type", "")
         )
         
         return CustomResponse(
             is_success=True,
             code=GeneralSuccessCode.OK[0],
-            message=GeneralSuccessCode.OK[1],
-            result={"response": gpt_reply, "session_id": session_id},
+            message="처리 중입니다...",
+            result={
+                "task_id": task.id,
+                "session_id": session_id,
+                "status": "processing"
+            },
             status=GeneralSuccessCode.OK[2],
         )
 
@@ -455,3 +420,35 @@ def api_index_opensearch(request):
         )
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=500)
+
+@api_view(["DELETE"])
+@permission_classes([AllowAny])
+@csrf_exempt
+def end_chat_session(request, session_id):
+    """대화 세션 종료"""
+    try:
+        from .gpt_service import SESSION_TEMP_STORE, store
+        
+        # 세션 데이터 정리
+        if session_id in SESSION_TEMP_STORE:
+            del SESSION_TEMP_STORE[session_id]
+        
+        if session_id in store:
+            del store[session_id]
+        
+        return CustomResponse(
+            is_success=True,
+            code=GeneralSuccessCode.OK[0],
+            message="대화가 종료되었습니다.",
+            result={"session_id": session_id},
+            status=GeneralSuccessCode.OK[2],
+        )
+    except Exception as e:
+        return CustomResponse(
+            is_success=False,
+            code=GeneralErrorCode.INTERNAL_SERVER_ERROR[0],
+            message=str(e),
+            result={},
+            status=GeneralErrorCode.INTERNAL_SERVER_ERROR[2],
+        )
+
