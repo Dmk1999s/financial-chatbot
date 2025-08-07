@@ -16,18 +16,24 @@ ROLE_CHOICES = [
 
 class ChatMessage(models.Model):
     session_id   = models.CharField(max_length=255, db_index=True, null=True, blank=True)
-    username     = models.CharField(max_length=100)
+    username     = models.CharField(max_length=100, db_index=True)
     product_type = models.CharField(max_length=20, choices=PRODUCT_CHOICES, null=True, blank=True)
-    role         = models.CharField(max_length=10, choices=ROLE_CHOICES)
+    role         = models.CharField(max_length=10, choices=ROLE_CHOICES, db_index=True)
     message      = models.TextField()
-    timestamp    = models.DateTimeField(auto_now_add=True)
+    timestamp    = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['session_id', 'timestamp']),
+            models.Index(fields=['username', 'timestamp']),
+        ]
 
     def __str__(self):
         return f"[{self.timestamp:%Y-%m-%d %H:%M}] ({self.product_type}) {self.role}: {self.message[:30]}"
 
 class InvestmentProfile(models.Model):
-    session_id              = models.CharField(max_length=255)
-    user_id                 = models.CharField(max_length=255)
+    session_id              = models.CharField(max_length=255, db_index=True)
+    user_id                 = models.CharField(max_length=255, db_index=True)
     risk_tolerance          = models.CharField(max_length=50,  null=True, blank=True)
     age                     = models.IntegerField(null=True, blank=True)
     income_stability        = models.CharField(max_length=50,  null=True, blank=True)
@@ -43,6 +49,12 @@ class InvestmentProfile(models.Model):
     investment_concern      = models.CharField(max_length=255, null=True, blank=True)
     created_at              = models.DateTimeField(auto_now_add=True)
     updated_at              = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['session_id', 'user_id']),
+        ]
+        unique_together = ['session_id', 'user_id']
 
     def __str__(self):
         return f"{self.user_id}'s Investment Profile (Session: {self.session_id})"
