@@ -1,7 +1,7 @@
 class AuthRouter:
     django_app_labels = {'auth', 'contenttypes', 'admin', 'sessions'}
     naughty_app_label = 'main'
-    naughty_models_in_secondary = {'user'}  # 반드시 소문자!
+    naughty_models_in_secondary = {}
 
     def db_for_read(self, model, **hints):
         if model._meta.app_label == self.naughty_app_label and model._meta.model_name in self.naughty_models_in_secondary:

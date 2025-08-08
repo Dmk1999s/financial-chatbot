@@ -6,23 +6,43 @@ from langchain_core.messages import HumanMessage, AIMessage
 from langchain_community.chat_message_histories import ChatMessageHistory
 from langchain_core.runnables import RunnableLambda
 from langchain_core.runnables.history import RunnableWithMessageHistory
-
-from main.models import User
-from functools import partial
-from main.models import User
-
+from django.core.cache import cache
 from django.contrib.auth.models import User
 import re
 import ast
 import json
-from openai import OpenAI
-
-client = OpenAI()
-
+from functools import partial, lru_cache
 
 load_dotenv()
 
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+# 캐싱을 이용해서 최적화
+class OptimizedOpenAIClient:
+    def __init__(self):
+        self.client = OpenAI(
+            api_key=os.getenv("OPENAI_API_KEY"),
+            max_retries=2,
+            timeout=30.0
+        )
+    
+    def create_completion(self, messages, model="gpt-3.5-turbo", **kwargs):
+        # 반복되는 쿼리가 있으면 캐시 먼저 확인
+        prompt_str = str(messages)
+        cache_key = f"gpt_response_{hash(prompt_str)}"
+        cached = cache.get(cache_key)
+        if cached:
+            return cached
+            
+        response = self.client.chat.completions.create(
+            model=model,
+            messages=messages,
+            **kwargs
+        )
+        
+        # Cache for 5 minutes
+        cache.set(cache_key, response, 300)
+        return response
+
+client = OptimizedOpenAIClient()
 fine_tuned_model = "ft:gpt-3.5-turbo-0125:personal::BDpYRjbn"
 store = {}
 SESSION_TEMP_STORE = {}
@@ -77,8 +97,17 @@ gpt_prompt = """
 JSON 외의 문장이 한 줄이라도 있으면 오류야. 반드시 지켜.
 """
 
+@lru_cache(maxsize=1000)
+def get_cached_session_id():
+    return str(uuid.uuid4())
+
 def get_session_id(request_data):
-    return request_data.get("session_id", str(uuid.uuid4()))
+    session_id = request_data.get("session_id")
+    if not session_id:
+        # 처음 대화하는 user에 대해서 세션 발급
+        username = request_data.get("username", "anonymous")
+        session_id = f"new_{username}_{hash(str(request_data)) % 10000}"
+    return session_id
 
 def get_session_history(session_id: str):
     if session_id not in store:
@@ -117,33 +146,29 @@ def extract_json_from_response(text: str):
 
 
 def extract_fields_from_natural_response(response_text: str, session_id: str) -> dict:
-    prompt = f"""
-    아래 문장에서 사용자의 재무 성향 정보를 추출해서 JSON 형식으로 반환해줘.
-    가능한 필드만 채워줘. 불확실한 건 생략해도 좋아.
 
-    문장: "{response_text}"
-
-    반환 예시:
-    {{
-        "age": 30,
-        "income": 5000,
-        "risk_tolerance": "중간"
-    }}
-    """
-
-    response = client.chat.completions.create(model="gpt-4",
-    messages=[
-        {"role": "system", "content": "너는 사용자의 재무 정보를 추출해 JSON으로 정리하는 분석가야."},
-        {"role": "user", "content": prompt}
-    ],
-    temperature=0.3)
-
-    content = response.choices[0].message.content
-
-    try:
-        return extract_json_from_response(content)
-    except Exception:
-        return {}
+    fields = {}
+    text_lower = response_text.lower()
+    
+    # Age extraction
+    age_match = re.search(r'(\d+)살|나이.*?(\d+)|age.*?(\d+)', text_lower)
+    if age_match:
+        fields['age'] = int(age_match.group(1) or age_match.group(2) or age_match.group(3))
+    
+    # Income extraction
+    income_match = re.search(r'(\d+)만원|월급.*?(\d+)|수입.*?(\d+)', text_lower)
+    if income_match:
+        fields['monthly_income'] = int(income_match.group(1) or income_match.group(2) or income_match.group(3)) * 10000
+    
+    # Risk tolerance
+    if any(word in text_lower for word in ['안전', '보수적', '낮음']):
+        fields['risk_tolerance'] = '낮음'
+    elif any(word in text_lower for word in ['적극적', '높음', '공격적']):
+        fields['risk_tolerance'] = '높음'
+    elif '중간' in text_lower:
+        fields['risk_tolerance'] = '중간'
+    
+    return fields
 
 def run_gpt(input_data, config, ai_model):
     user_input = input_data["input"]
@@ -159,27 +184,8 @@ def run_gpt(input_data, config, ai_model):
         else:
             return {"output": "기존 프로필 정보를 유지합니다. 계속 진행할게요."}
 
-    current_data = SESSION_TEMP_STORE.get(session_id, {})
-    new_fields = extract_fields_from_natural_response(user_input, session_id)
-
-    # 프로필 충돌 확인
-    conflicts = check_conflict(current_data, new_fields)
-    if conflicts:
-        # 사용자에게 업데이트 여부 질문 유도
-        conflict_messages = "\n".join(
-            f"- {k}: 기존 '{old}' vs 입력 '{new}'"
-            for k, old, new in conflicts
-        )
-        clarification = (
-            f"입력하신 정보가 기존 프로필과 다릅니다:\n{conflict_messages}\n"
-            "프로필을 업데이트할까요? '네' 또는 '아니오'로 답해주세요."
-        )
-        SESSION_TEMP_STORE["conflict_pending"] = {
-            k: new for k, _, new in conflicts
-        }
-        return {"output": clarification}
-
     # 현재 누락된 필드 추적
+    current_data = SESSION_TEMP_STORE.get(session_id, {})
     missing_keys = [key for key in REQUIRED_KEYS if key not in current_data or current_data[key] is None]
 
     # 기본 프롬프트 + 누락된 키에 대한 질문 유도
@@ -201,10 +207,11 @@ def run_gpt(input_data, config, ai_model):
         {"role": "user", "content": user_input}
     ]
 
-    response = client.chat.completions.create(
-        model=ai_model,
+    response = client.create_completion(
         messages=messages,
+        model=ai_model,
         temperature=0.0,
+        max_tokens=150  # 속도를 위해 토큰 제한
     )
     return {"output": response.choices[0].message.content}
 
@@ -228,9 +235,9 @@ def _run_gpt_parser(input_data, config, model):
         {"role": "system", "content": input_data["system_prompt"]},
         {"role": "user", "content": input_data["input"]}
     ]
-    response = client.chat.completions.create(
-        model=model,
+    response = client.create_completion(
         messages=messages,
+        model=model,
         temperature=0.0,
     )
     return {"output": response.choices[0].message.content}
@@ -274,20 +281,37 @@ def save_profile_from_gpt(parsed_data, user_id, session_id):
 views.py에 제공하는 함수
 """
 def handle_chat(user_input, session_id, user_id=None):
-    # 1) 메시지 히스토리 호출
-    result    = with_message_history.invoke(
+    # Fast path for new sessions - use lighter processing
+    if session_id.startswith("new_"):
+        # Initialize session store
+        if session_id not in SESSION_TEMP_STORE:
+            SESSION_TEMP_STORE[session_id] = {}
+        
+        # Use simplified prompt for first interaction
+        simple_prompt = "안녕하세요! 투자 상담을 도와드릴게요. 먼저 나이를 알려주세요."
+        
+        # Extract basic info from user input
+        extracted_fields = extract_fields_from_natural_response(user_input, session_id)
+        valid_fields = {
+            k: v for k, v in extracted_fields.items()
+            if k in REQUIRED_KEYS and v is not None
+        }
+        SESSION_TEMP_STORE[session_id].update(valid_fields)
+        
+        return simple_prompt, session_id
+    
+    # Regular processing for existing sessions
+    result = with_message_history.invoke(
         {"input": user_input},
         config={"configurable": {"session_id": session_id}}
     )
 
     gpt_reply = result["output"]
-
     extracted_fields = extract_fields_from_natural_response(gpt_reply, session_id)
 
     if session_id not in SESSION_TEMP_STORE:
         SESSION_TEMP_STORE[session_id] = {}
 
-    # 누적 저장 (None 값 + 오타 키 제거)
     valid_fields = {
         k: v for k, v in extracted_fields.items()
         if k in REQUIRED_KEYS and v is not None
@@ -296,10 +320,9 @@ def handle_chat(user_input, session_id, user_id=None):
 
     current_data = SESSION_TEMP_STORE[session_id]
 
-    # 모든 필드가 모이면 저장
     if REQUIRED_KEYS.issubset(current_data.keys()):
         if user_id:
             save_profile_from_gpt(current_data, user_id, session_id)
-        del SESSION_TEMP_STORE[session_id]  # 저장 후 초기화
+        del SESSION_TEMP_STORE[session_id]
 
     return gpt_reply, session_id

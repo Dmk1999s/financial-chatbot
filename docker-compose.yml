@@ -22,6 +22,20 @@ services:
       timeout: 5s
       retries: 5
 
+  redis:
+    container_name: redis
+    image: redis:7-alpine
+    restart: always
+    ports:
+      - "6379:6379"
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   web:
     container_name: web
     build:
@@ -41,8 +55,27 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     networks:
         - app-network
+
+  celery:
+    container_name: celery
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: sh /entrypoint.celery.sh
+    env_file:
+      - .env
+    restart: always
+    volumes:
+      - .:/app
+    depends_on:
+      - db
+      - redis
+    networks:
+      - app-network
 
   nginx:
     container_name: nginx
