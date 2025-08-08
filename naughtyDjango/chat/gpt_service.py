@@ -15,7 +15,7 @@ from functools import partial, lru_cache
 
 load_dotenv()
 
-# Optimized OpenAI client with caching
+# 캐싱을 이용해서 최적화
 class OptimizedOpenAIClient:
     def __init__(self):
         self.client = OpenAI(
@@ -25,7 +25,7 @@ class OptimizedOpenAIClient:
         )
     
     def create_completion(self, messages, model="gpt-3.5-turbo", **kwargs):
-        # Check cache first for repeated queries
+        # 반복되는 쿼리가 있으면 캐시 먼저 확인
         prompt_str = str(messages)
         cache_key = f"gpt_response_{hash(prompt_str)}"
         cached = cache.get(cache_key)
@@ -104,7 +104,7 @@ def get_cached_session_id():
 def get_session_id(request_data):
     session_id = request_data.get("session_id")
     if not session_id:
-        # Use a deterministic session ID for first-time users to enable caching
+        # 처음 대화하는 user에 대해서 세션 발급
         username = request_data.get("username", "anonymous")
         session_id = f"new_{username}_{hash(str(request_data)) % 10000}"
     return session_id
@@ -146,11 +146,7 @@ def extract_json_from_response(text: str):
 
 
 def extract_fields_from_natural_response(response_text: str, session_id: str) -> dict:
-    # Skip extraction for new sessions to avoid slow GPT-4 calls
-    if session_id not in SESSION_TEMP_STORE:
-        return {}
-    
-    # Use faster regex patterns for common cases
+
     fields = {}
     text_lower = response_text.lower()
     
@@ -188,27 +184,8 @@ def run_gpt(input_data, config, ai_model):
         else:
             return {"output": "기존 프로필 정보를 유지합니다. 계속 진행할게요."}
 
-    current_data = SESSION_TEMP_STORE.get(session_id, {})
-    new_fields = extract_fields_from_natural_response(user_input, session_id)
-
-    # 프로필 충돌 확인
-    conflicts = check_conflict(current_data, new_fields)
-    if conflicts:
-        # 사용자에게 업데이트 여부 질문 유도
-        conflict_messages = "\n".join(
-            f"- {k}: 기존 '{old}' vs 입력 '{new}'"
-            for k, old, new in conflicts
-        )
-        clarification = (
-            f"입력하신 정보가 기존 프로필과 다릅니다:\n{conflict_messages}\n"
-            "프로필을 업데이트할까요? '네' 또는 '아니오'로 답해주세요."
-        )
-        SESSION_TEMP_STORE["conflict_pending"] = {
-            k: new for k, _, new in conflicts
-        }
-        return {"output": clarification}
-
     # 현재 누락된 필드 추적
+    current_data = SESSION_TEMP_STORE.get(session_id, {})
     missing_keys = [key for key in REQUIRED_KEYS if key not in current_data or current_data[key] is None]
 
     # 기본 프롬프트 + 누락된 키에 대한 질문 유도
@@ -234,7 +211,7 @@ def run_gpt(input_data, config, ai_model):
         messages=messages,
         model=ai_model,
         temperature=0.0,
-        max_tokens=150  # Limit response length for faster processing
+        max_tokens=150  # 속도를 위해 토큰 제한
     )
     return {"output": response.choices[0].message.content}
 
