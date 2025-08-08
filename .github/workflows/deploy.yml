@@ -4,11 +4,13 @@ on:
   pull_request:
     branches:
       - main
+      - develop
     types:
       - closed
   push:
     branches:
       - main
+      - develop
 
 jobs: # 아래의 jobs를 수행
 
