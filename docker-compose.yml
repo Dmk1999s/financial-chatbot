@@ -65,7 +65,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    command: sh /entrypoint.celery.sh
+    command: ["/entrypoint.celery.sh"]
+    entrypoint: []
     env_file:
       - .env
     restart: always
