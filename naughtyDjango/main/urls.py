@@ -15,6 +15,7 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 from django.contrib import admin
+from django.http import HttpResponse
 from django.urls import path, include, re_path
 from rest_framework import permissions
 from drf_yasg.views import get_schema_view
@@ -23,19 +24,23 @@ from drf_yasg import openapi
 # 스웨거 설정
 schema_view = get_schema_view(
     openapi.Info(
-        title="Django API 문서",
+        title="NauhtyComputer Django API 문서",
         default_version='v1',
-        description="Django API 명세서입니다.",
-        terms_of_service="https://www.example.com/terms/",
+        description="컴퓨터가 말을 안드류 팀의 Django API 명세서입니다.",
+        terms_of_service="https://www.nauhtydjango.cloud/terms/",
     ),
     public=True,
     permission_classes=[permissions.AllowAny],
+    url='https://nauhtydjango.cloud',
     #authentication_classes=[],
 )
 
 urlpatterns = [
     #path('admin/', admin.site.urls),
-    path('', include('chat.urls')),  # /api/chat/
+    path('chats/', include('chat.urls')),
+
+    # 헬스체킹용 urlk
+    path('', lambda request: HttpResponse("Hello from Django!")),
 
     # Swagger 설정
     re_path(r'^swagger(?P<format>\.json|\.yaml)$', schema_view.without_ui(cache_timeout=0), name='schema-json'),
