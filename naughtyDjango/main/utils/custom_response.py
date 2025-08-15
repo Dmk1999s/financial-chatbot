@@ -1,6 +1,7 @@
 from rest_framework.response import Response
+from django.http import JsonResponse
 
-class CustomResponse(Response):
+class CustomResponse(JsonResponse):
     def __init__(self, is_success: bool, code: str, message: str, result=None, status=None):
         data = {
             "isSuccess": is_success,
@@ -8,7 +9,7 @@ class CustomResponse(Response):
             "message": message,
             "result": result
         }
-        super().__init__(data, status=status)
+        super().__init__(data, status=status, json_dumps_params={'ensure_ascii': False})
 
 class BadRequestException(Exception):
     def __init__(self, message="잘못된 요청입니다."):

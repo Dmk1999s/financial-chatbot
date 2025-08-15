@@ -1,11 +1,13 @@
 #!/bin/sh
 
 # 진입점 경로 수정
-cd /home/app/naughtyDjango
+cd /app/naughtyDjango
 
 # 마이그레이션, collectstatic 등 필요한 커맨드
 python manage.py migrate
 python manage.py collectstatic --noinput
 
+export PYTHONPATH=/app/naughtyDjango
+
 # gunicorn 실행
-exec gunicorn naughtyDjango.wsgi:application --bind 0.0.0.0:8000
+exec gunicorn main.wsgi:application --bind 0.0.0.0:8000
