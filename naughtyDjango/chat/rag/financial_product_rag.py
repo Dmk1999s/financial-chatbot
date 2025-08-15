@@ -1,4 +1,4 @@
-# chat/financial_product_rag.py
+# chat/rag/financial_product_rag.py
 
 import os
 from pathlib import Path
@@ -54,24 +54,26 @@ schema_defs = {
         "sale_co":        "판매사",
         "sale_strt_day":  "판매 개시일",
     },
-    "stock": {
-        "id":        "레코드 고유 ID",
-        "rsym":      "종목 코드",
-        "open":      "시가",
-        "high":      "고가",
-        "low":       "저가",
-        "last":      "현재가",
-        "base":      "전일종가",
-        "tomv":      "시가총액",
-        "pvol":      "전일거래량",
-        "tvol":      "당일거래량",
-        "tamt":      "당일거래대금",
-        "perx":      "PER",
-        "pbrx":      "PBR",
-        "epsx":      "EPS",
-        "bpsx":      "BPS",
-        "e_icod":    "업종(섹터)",
+    "krx_stock_info": {
+        "id":             "레코드 고유 ID",
+        "bstp_kor_isnm":  "한글 종목명",
+        "eps":            "EPS",
+        "pbr":            "PBR",
+        "per":            "PER",
+        "stck_prpr":      "현재가",
+        "stck_shrn_iscd": "종목 코드",
+        "prdt_abrv_name": "종목 약식명"
     },
+    "nasdaq_stock_info": {
+        "id": "레코드 고유 ID",
+        "code": "종목 코드",
+        "e_icod": "업종(섹터)",
+        "epsx": "EPS",
+        "pbrx": "PBR",
+        "perx": "PER",
+        "prdt_abrv_name": "종목 약식명",
+        "last": "현재가"
+    }
 }
 
 # 4) 공통 프롬프트 템플릿
@@ -125,7 +127,8 @@ def answer_financial_question(question: str) -> str:
         "deposit": "예금",
         "savings": "적금",
         "annuity": "연금",
-        "stock":   "주식",
+        "krx_stock_info":   "국내주식",
+        "nasdaq_stock_info":"해외주식",
     }
 
     tools = []
