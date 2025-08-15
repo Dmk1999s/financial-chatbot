@@ -1,6 +1,6 @@
 # chat/management/commands/opensearch_service.py
 from django.core.management.base import BaseCommand
-from chat.management.commands.opensearch_recommender import recommend_with_knn
+from chat.services.opensearch_recommender import recommend_with_knn
 
 class Command(BaseCommand):
     help = "인덱싱된 벡터로 k-NN 검색하여 추천문을 출력합니다."

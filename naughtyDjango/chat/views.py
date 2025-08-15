@@ -1,6 +1,6 @@
 # chat/views.py
 import os
-from chat.management.commands.opensearch_recommender import recommend_with_knn
+from chat.services.opensearch_recommender import recommend_with_knn
 from dotenv import load_dotenv
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
