@@ -7,22 +7,40 @@ services:
     restart: always
     environment:
       MYSQL_ROOT_HOST: '%'
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-mysql}
     ports:
       - "3307:3306"
     env_file:
       - .env
     volumes:
       - dbdata:/var/lib/mysql
+    networks:
+      - app-network
+    healthcheck:
+      test: [ "CMD", "mysqladmin", "ping", "-h", "localhost" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    container_name: redis
+    image: redis:7-alpine
+    restart: always
+    ports:
+      - "6379:6379"
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   web:
     container_name: web
     build:
       context: .
       dockerfile: Dockerfile
-    command: >
-      sh -c "cd naughtyDjango && python manage.py migrate &&
-             python manage.py runserver 0.0.0.0:8000"
     environment:
       DJANGO_SETTINGS_MODULE: main.settings  # .py는 생략
     env_file:
@@ -35,7 +53,30 @@ services:
       - static_volume:/home/app/web/static  # ✅ static 파일을 volume에 저장
       - media_volume:/home/app/web/media
     depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+        - app-network
+
+  celery:
+    container_name: celery
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: sh /entrypoint.celery.sh
+    env_file:
+      - .env
+    restart: always
+    volumes:
+      - .:/app
+    depends_on:
       - db
+      - redis
+    networks:
+      - app-network
+
   nginx:
     container_name: nginx
     build:
@@ -43,13 +84,20 @@ services:
       dockerfile: Dockerfile
     ports:
       - "80:80"
+      - "443:443"
     depends_on:
       - web
     volumes:
       - static_volume:/home/app/web/static
       - media_volume:/home/app/web/media
+      - /etc/nginx-certs:/etc/nginx-certs:ro
+    networks:
+      - app-network
 
 volumes:
   dbdata:
   static_volume:
   media_volume:
+
+networks:
+  app-network:

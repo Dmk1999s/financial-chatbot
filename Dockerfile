@@ -5,6 +5,7 @@ RUN apt-get update && apt-get install -y \
     gcc \
     default-libmysqlclient-dev \
     pkg-config \
+    netcat-openbsd \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
@@ -17,7 +18,16 @@ WORKDIR /app
 # 종속성 먼저 복사하고 설치 (캐시 최적화)
 COPY requirements.txt .
 
-RUN pip install --upgrade pip && pip install -r requirements.txt
+RUN pip install --upgrade pip && pip install --no-cache-dir -r requirements.txt
 
 # 전체 코드 복사
 COPY . .
+
+COPY ./config/docker/entrypoint.prod.sh /entrypoint.prod.sh
+COPY ./config/docker/entrypoint.celery.sh /entrypoint.celery.sh
+
+# 실행 권한 부여
+RUN chmod +x /entrypoint.prod.sh /entrypoint.celery.sh
+
+# 엔트리포인트 지정
+ENTRYPOINT ["/entrypoint.prod.sh"]
