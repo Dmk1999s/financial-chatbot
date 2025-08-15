@@ -1,6 +1,6 @@
 # chat/views.py
 import os
-from chat.services.opensearch_recommender import recommend_with_knn
+
 from dotenv import load_dotenv
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
@@ -8,13 +8,12 @@ from django.views.decorators.csrf import csrf_exempt
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 from openai import OpenAI
-from rest_framework.decorators import permission_classes
+from rest_framework.decorators import api_view, permission_classes
 import io
 from django.core.management import call_command
 from rest_framework.decorators import api_view
 from rest_framework.permissions import AllowAny
 
-from chat.models import ChatMessage
 from chat.gpt_service import extract_json_from_response
 from chat.models import ChatMessage
 from main.models import User
@@ -716,7 +715,7 @@ def recommend_products(request):
                 code=GeneralErrorCode.BAD_REQUEST[0],
                 message="`query` 파라미터가 필요합니다.",
                 result={},
-                status=GeneralErrorCode.BAD_REQUEST[2],
+                status=GeneralErrorCode.BAD_REQUEST[2]
             )
 
         # (1) 사용자 메시지 저장
@@ -728,8 +727,13 @@ def recommend_products(request):
             message=query,
         )
 
-        # (2) 관리 커맨드 호출 제거 → 서비스 함수 직접 호출
-        recommendation = recommend_with_knn(query=query, top_k=top_k, index_name=index_name)
+        buf = io.StringIO()
+        cmd_args = ['opensearch_service', query, f'--top_k={top_k}']
+        if index_name:
+            cmd_args.append(f'--index={index_name}')
+
+        call_command(*cmd_args, stdout=buf)
+        recommendation = buf.getvalue().strip()
 
         # (3) 어시스턴트 메시지 저장
         ChatMessage.objects.create(
@@ -745,7 +749,7 @@ def recommend_products(request):
             code=GeneralSuccessCode.OK[0],
             message=GeneralSuccessCode.OK[1],
             result={"response": recommendation},
-            status=GeneralSuccessCode.OK[2],
+            status=GeneralSuccessCode.OK[2]
         )
 
     except Exception as e:
@@ -754,7 +758,7 @@ def recommend_products(request):
             code=GeneralErrorCode.INTERNAL_SERVER_ERROR[0],
             message=GeneralErrorCode.INTERNAL_SERVER_ERROR[1],
             result={"error": repr(e)},
-            status=GeneralErrorCode.INTERNAL_SERVER_ERROR[2],
+            status=GeneralErrorCode.INTERNAL_SERVER_ERROR[2]
         )
 
 
