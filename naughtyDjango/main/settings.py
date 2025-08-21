@@ -153,6 +153,7 @@ DATABASES = {
         'PORT': os.getenv('LOCAL_PORT'),
         'OPTIONS': {
             'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
+            #'auth_plugin': 'caching_sha2_password',  # 필수 추가[2][6]
         }
     },
     'default': {

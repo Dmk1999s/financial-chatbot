@@ -3,7 +3,6 @@
 cd /app/naughtyDjango
 
 export PYTHONPATH=/app/naughtyDjango
-export DJANGO_SETTINGS_MODULE=main.settings
 
 # Wait for Redis to be ready
 echo "Waiting for Redis..."
@@ -13,5 +12,4 @@ done
 echo "Redis is ready!"
 
 # Start Celery worker
-echo "Starting Celery worker..."
 exec celery -A main worker -l info --concurrency=2
