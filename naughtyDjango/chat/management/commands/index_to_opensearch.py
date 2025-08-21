@@ -43,7 +43,14 @@ class Command(BaseCommand):
                             "text":         {"type": "text"},
                             "product_type": {"type": "keyword"},
                             "table":        {"type": "keyword"},
-                            "embedding":    {"type": "knn_vector", "dimension": 1536}
+                            "embedding":    {"type": "knn_vector", "dimension": 1536},
+                            # 숫자 필드들의 타입을 float로 명시
+                            "per": {"type": "float"},
+                            "pbr": {"type": "float"},
+                            "eps": {"type": "float"},
+                            "perx": {"type": "float"},
+                            "pbrx": {"type": "float"},
+                            "epsx": {"type": "float"}
                         }
                     }
                 }
@@ -96,11 +103,27 @@ class Command(BaseCommand):
 
                 # (3) bulk 액션 생성
                 for row, vec, txt in zip(rows, vectors, texts):
+                    # ==========================================================
+                    # ✅ 숫자 필드를 float으로 변환하는 로직 추가
+                    # ==========================================================
+                    numeric_fields = ['per', 'pbr', 'eps', 'perx', 'pbrx', 'epsx', 'avg_prft_rate', 'btrm_prft_rate1', 'guar_rate']
+                    for field in numeric_fields:
+                        if field in row and row[field] is not None:
+                            try:
+                                # 쉼표(,)가 포함된 숫자 문자열 처리 (예: "1,234.5")
+                                if isinstance(row[field], str):
+                                    row[field] = row[field].replace(',', '')
+                                row[field] = float(row[field])
+                            except (ValueError, TypeError):
+                                # 숫자로 변환할 수 없는 값(예: 'N/A')은 None으로 처리
+                                row[field] = None
+                    # ==========================================================
                     actions.append({
                         "_op_type": "index",
                         "_index":   index_name,
                         "_id":      f"{tbl}-{row['id']}",
                         "_source": {
+                            **row,  # DB에서 읽어온 모든 컬럼(per, pbr 등)을 여기에 포함
                             "text":         txt,
                             "embedding":    vec,
                             "table":        tbl,
