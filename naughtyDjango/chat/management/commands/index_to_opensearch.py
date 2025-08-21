@@ -1,4 +1,3 @@
-# chat/management/commands/index_to_opensearch.py
 import os
 import time
 from pathlib import Path

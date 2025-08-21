@@ -8,13 +8,14 @@ from django.views.decorators.csrf import csrf_exempt
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 from openai import OpenAI
-from rest_framework.decorators import permission_classes
+from rest_framework.decorators import api_view, permission_classes
 import io
 from django.core.management import call_command
 from rest_framework.decorators import api_view
 from rest_framework.permissions import AllowAny
 from chat.gpt_service import handle_chitchat
 from chat.models import ChatMessage
+
 from chat.gpt_service import extract_json_from_response
 from chat.models import ChatMessage
 from main.models import User
