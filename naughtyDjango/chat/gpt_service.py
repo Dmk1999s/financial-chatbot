@@ -326,3 +326,23 @@ def handle_chat(user_input, session_id, user_id=None):
         del SESSION_TEMP_STORE[session_id]
 
     return gpt_reply, session_id
+
+
+# ==========================================================
+# ✅ 일반 대화 처리를 위한 함수 추가
+# ==========================================================
+def handle_chitchat(query: str) -> str:
+    """
+    RAG 검색 없이 일반적인 대화를 처리합니다.
+    """
+    openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    response = openai_client.chat.completions.create(
+        model="gpt-3.5-turbo",
+        messages=[
+            {"role": "system", "content": "당신은 친절한 금융 상담 챗봇입니다."},
+            {"role": "user", "content": query}
+        ],
+        temperature=0.7,
+        max_tokens=500
+    )
+    return response.choices[0].message.content
