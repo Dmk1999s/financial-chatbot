@@ -1,27 +1,6 @@
 version: '3.8'
 
 services:
-  db:
-    container_name: db
-    image: mysql:8.0.42
-    restart: always
-    environment:
-      MYSQL_ROOT_HOST: '%'
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-mysql}
-    ports:
-      - "3307:3306"
-    env_file:
-      - .env
-    volumes:
-      - dbdata:/var/lib/mysql
-    networks:
-      - app-network
-    healthcheck:
-      test: [ "CMD", "mysqladmin", "ping", "-h", "localhost" ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
   redis:
     container_name: redis
     image: redis:7-alpine
@@ -53,8 +32,6 @@ services:
       - static_volume:/home/app/web/static  # ✅ static 파일을 volume에 저장
       - media_volume:/home/app/web/media
     depends_on:
-      db:
-        condition: service_healthy
       redis:
         condition: service_healthy
     networks:
@@ -72,7 +49,6 @@ services:
     volumes:
       - .:/app
     depends_on:
-      - db
       - redis
     networks:
       - app-network
@@ -95,7 +71,6 @@ services:
       - app-network
 
 volumes:
-  dbdata:
   static_volume:
   media_volume:
 
