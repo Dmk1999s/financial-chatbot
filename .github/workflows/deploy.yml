@@ -60,3 +60,13 @@ jobs: # 아래의 jobs를 수행
         script: |
           chmod +x /home/ubuntu/srv/ubuntu/config/scripts/deploy.sh
           sh /home/ubuntu/srv/ubuntu/config/scripts/deploy.sh
+
+    - name: 🔧 Setup Celery Systemd Service # 6. Celery Systemd 서비스 설정
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.HOST }}
+        username: ubuntu
+        key: ${{ secrets.KEY }}
+        script: |
+          chmod +x /home/ubuntu/srv/ubuntu/config/scripts/setup_systemd.sh
+          sh /home/ubuntu/srv/ubuntu/config/scripts/setup_systemd.sh
