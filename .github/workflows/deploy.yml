@@ -51,15 +51,15 @@ jobs: # 아래의 jobs를 수행
     needs: ci # CI 단계가 끝난 후 실행됨
 
     steps:
-    - name: 🔐 Run deploy.sh on EC2 # 5. EC2에서 배포 스크립트 실행
+    - name: 🔐 Run deploy script on EC2 # 5. EC2에서 배포 스크립트 실행
       uses: appleboy/ssh-action@master
       with:
         host: ${{ secrets.HOST }}
         username: ubuntu
         key: ${{ secrets.KEY }}
         script: |
-          chmod +x /home/ubuntu/srv/ubuntu/config/scripts/deploy.sh
-          sh /home/ubuntu/srv/ubuntu/config/scripts/deploy.sh
+          chmod +x /home/ubuntu/srv/ubuntu/config/scripts/deploy-micro.sh
+          sh /home/ubuntu/srv/ubuntu/config/scripts/deploy-micro.sh
 
     - name: 🔧 Setup Celery Systemd Service # 6. Celery Systemd 서비스 설정
       uses: appleboy/ssh-action@master
