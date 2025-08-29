@@ -150,10 +150,19 @@ value_growth, risk_acceptance_level, investment_concern
 @chat_logger
 def chat_with_gpt(request):
     try:
+        # 요청 로깅 추가
+        print(f"=== Request from Swagger/curl ===")
+        print(f"Method: {request.method}")
+        print(f"Headers: {dict(request.headers)}")
+        print(f"Body: {request.body}")
+        print(f"Content-Type: {request.content_type}")
+        
         body = json.loads(request.body)
         username = body.get("username", "")
         session_id = body.get("session_id") or get_session_id(body)
         message = (body.get("message") or "").strip()
+        
+        print(f"Parsed data - username: {username}, session_id: {session_id}, message: {message}")
         
         if not message:
             return CustomResponse(
@@ -233,50 +242,59 @@ def chat_with_gpt(request):
                 status=GeneralSuccessCode.OK[2],
             )
 
-        # 1. 빠른 충돌 감지 (동기)
-        from .gpt_service import SESSION_TEMP_STORE, extract_fields_from_natural_response, check_conflict
-        
-        current_data = SESSION_TEMP_STORE.get(session_id, {})
-        new_fields = extract_fields_from_natural_response(message, session_id)
-        conflicts = check_conflict(current_data, new_fields)
-        
-        # 충돌이 없으면 새 필드를 세션에 저장
-        if not conflicts and new_fields:
-            current_data.update(new_fields)
-            SESSION_TEMP_STORE[session_id] = current_data
-        
-        if conflicts:
-            # 충돌 감지 시 즉시 리턴 (AI API 호출 없음)
-            conflict_messages = "\n".join(
-                f"- {k}: 기존 '{old}' vs 입력 '{new}'"
-                for k, old, new in conflicts
-            )
-            clarification = (
-                f"입력하신 정보가 기존 프로필과 다릅니다:\n{conflict_messages}\n"
-                "프로필을 업데이트할까요?"
-            )
-            SESSION_TEMP_STORE["conflict_pending"] = {
-                k: new for k, _, new in conflicts
-            }
-            
-            return CustomResponse(
-                is_success=True,
-                code=GeneralSuccessCode.CONFLICTS[0],
-                message=GeneralSuccessCode.CONFLICTS[1],
-                result={
-                    "message": clarification,
-                    "conflict_data": {k: new for k, _, new in conflicts},
-                    "session_id": session_id,
-                    "requires_confirmation": True
-                },
-                status=GeneralSuccessCode.CONFLICTS[2],
-            )
-        
-        # 2. AI API 호출이 필요한 경우 celery로 비동기 처리
+        # AI API 호출이 필요한 경우 celery로 비동기 처리
         task = process_chat_async.delay(
             session_id, username, message, ""
         )
         
+        # Task 결과를 폴링하여 충돌 감지
+        max_polling = 20  # 최대 10초 대기 (0.5초 * 20)
+        polling_count = 0
+        
+        while polling_count < max_polling:
+            result = AsyncResult(task.id)
+            
+            if result.ready():
+                if result.successful():
+                    task_result = result.get()
+                    
+                    # 충돌 감지 확인
+                    if task_result.get("type") == "conflict_detected":
+                        field = task_result.get("field")
+                        value = task_result.get("value")
+                        
+                        # 충돌 데이터를 SESSION_TEMP_STORE에 저장
+                        from .gpt_service import SESSION_TEMP_STORE
+                        SESSION_TEMP_STORE["conflict_pending"] = {field: value}
+                        
+                        # 충돌 데이터 구성
+                        conflict_data = {field: value}
+                        
+                        return CustomResponse(
+                            is_success=True,
+                            code=GeneralSuccessCode.CONFLICTS[0],
+                            message=GeneralSuccessCode.CONFLICTS[1],
+                            result={
+                                "message": f"프로필 변경이 감지되었습니다: {field} = {value}",
+                                "conflict_data": conflict_data,
+                                "session_id": session_id,
+                                "requires_confirmation": True
+                            },
+                            status=GeneralSuccessCode.CONFLICTS[2],
+                        )
+                    else:
+                        # 일반 채팅 응답이면 task_id 반환
+                        break
+                else:
+                    # Task 실패
+                    break
+            
+            # 0.5초 대기 후 다시 폴링
+            import time
+            time.sleep(0.5)
+            polling_count += 1
+        
+        # 폴링 완료 후 task_id 반환 (일반 채팅 또는 폴링 실패)
         return CustomResponse(
             is_success=True,
             code=GeneralSuccessCode.OK[0],
@@ -377,6 +395,28 @@ def get_task_status(request, task_id):
         if result.ready():
             if result.successful():
                 task_result = result.get()
+                
+                # 충돌 감지 확인
+                if task_result.get("type") == "conflict_detected":
+                    field = task_result.get("field")
+                    value = task_result.get("value")
+                    
+                    # 충돌 데이터 구성
+                    conflict_data = {field: value}
+                    
+                    return CustomResponse(
+                        is_success=True,
+                        code=GeneralSuccessCode.CONFLICTS[0],
+                        message=GeneralSuccessCode.CONFLICTS[1],
+                        result={
+                            "message": f"프로필 변경이 감지되었습니다: {field} = {value}",
+                            "conflict_data": conflict_data,
+                            "requires_confirmation": True
+                        },
+                        status=GeneralSuccessCode.CONFLICTS[2],
+                    )
+                
+                # 일반 채팅 응답
                 return CustomResponse(
                     is_success=True,
                     code=GeneralSuccessCode.OK[0],
@@ -488,13 +528,51 @@ def handle_profile_conflict(request):
     pending = SESSION_TEMP_STORE.pop("conflict_pending")
     
     if user_choice == 'yes':
-        # 충돌 항목을 저장
+        # 충돌 항목을 세션에 저장
         if session_id not in SESSION_TEMP_STORE:
             SESSION_TEMP_STORE[session_id] = {}
         SESSION_TEMP_STORE[session_id].update(pending)
-        message = "프로필이 성공적으로 업데이트되었습니다. 계속 진행할게요."
+        
+        # DB 업데이트
+        try:
+            # session_id에서 username 추출 (예: "new_ehdgurdusdn@naver.com_8230" -> "ehdgurdusdn@naver.com")
+            username = session_id.split('_')[1] if '_' in session_id else session_id
+            
+            from main.models import User
+            user = User.objects.get(email=username)
+            
+            # 필드 매핑
+            field_mapping = {
+                'age': 'age',
+                'monthly_income': 'income',
+                'risk_tolerance': 'risk_tolerance',
+                'income_stability': 'income_stability',
+                'income_sources': 'income_source',
+                'investment_horizon': 'period',
+                'expected_return': 'expected_income',
+                'expected_loss': 'expected_loss',
+                'investment_purpose': 'purpose',
+                'asset_allocation_type': 'asset_allocation_type',
+                'value_growth': 'value_growth',
+                'risk_acceptance_level': 'risk_acceptance_level',
+                'investment_concern': 'investment_concern',
+            }
+            
+            # DB 업데이트
+            for field, value in pending.items():
+                if field in field_mapping:
+                    db_field = field_mapping[field]
+                    setattr(user, db_field, value)
+            
+            user.save()
+            print(f"DB updated: {pending}")
+            
+        except Exception as e:
+            print(f"DB update failed: {e}")
+        
+        message = "프로필이 성공적으로 업데이트되었습니다."
     else:
-        message = "기존 프로필 정보를 유지합니다. 계속 진행할게요."
+        message = "기존 프로필 정보를 유지합니다."
     
     return CustomResponse(
         is_success=True,

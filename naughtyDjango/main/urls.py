@@ -31,8 +31,7 @@ schema_view = get_schema_view(
     ),
     public=True,
     permission_classes=[permissions.AllowAny],
-    url='https://nauhtydjango.cloud',
-    #url='http://localhost:8000',
+    url='http://localhost:8000',
     #authentication_classes=[],
 )
 
