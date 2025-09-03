@@ -3,7 +3,7 @@ from openai import OpenAI
 import os
 from .models import ChatMessage
 from main.models import User
-from .gpt_service import extract_json_from_response, handle_chat
+from .gpt_service import extract_json_from_response, handle_chat, get_session_data, set_session_data
 
 DETECTION_SYSTEM = """
 당신은 '투자 프로필 변경 트리거'를 감지하는 어시스턴트입니다.
@@ -93,10 +93,11 @@ def process_chat_async(session_id, username, message, product_type):
                             "message": f"프로필 변경이 감지되었습니다: {field} = {value} (기존: {current_value})"
                         }
                     else:
-                        # 충돌이 없으면 DB 업데이트
-                        if field in field_mapping:
-                            setattr(user, field, value)
-                            user.save(update_fields=[field])
+                        # 충돌이 없으면 '세션 캐시'에만 반영하고,
+                        # 모든 키가 채워지는 시점에 handle_chat에서 일괄 저장
+                        session_data = get_session_data(session_id)
+                        session_data[field] = value
+                        set_session_data(session_id, session_data)
                 
                 except User.DoesNotExist:
                     pass
