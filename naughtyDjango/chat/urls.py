@@ -1,6 +1,5 @@
 from django.urls import path
 from .views.chat_views import chat_with_gpt, get_task_status, handle_profile_conflict, end_chat_session
-from .views.profile_views import save_investment_profile
 from .views.recommendation_views import recommend_products
 from .views.opensearch_views import api_index_opensearch
 
@@ -11,9 +10,6 @@ urlpatterns = [
     path('session/<str:session_id>/end/', end_chat_session, name='end_chat_session'), # (3) 챗봇 세션 종료
     path('profile/conflict/', handle_profile_conflict, name='handle_profile_conflict'), # (4) 프로필 충돌 처리
 
-    # 프로필 관련
-    path('profile/save/', save_investment_profile, name='save_investment_profile'),
-    
     # RAG 관련
     path('recommend/', recommend_products, name='recommend_products'),
     

@@ -14,7 +14,8 @@ from main.constants.error_codes import GeneralErrorCode
 from main.constants.success_codes import GeneralSuccessCode
 from main.models import User
 from chat.management.commands.opensearch_recommender import recommend_with_knn
-from chat.gpt_service import handle_chitchat, SESSION_TEMP_STORE
+from chat.gpt_service import handle_chitchat
+import logging
 
 
 class ChatService:
@@ -112,7 +113,8 @@ class RecommendationService:
         # persist messages
         ChatMessage.objects.create(session_id=session_id, username=username, role="user", message=query)
         ChatMessage.objects.create(session_id=session_id, username=username, product_type=product_type, role="assistant", message=response_text)
-        return response_text, product_type
+        # intent도 함께 반환하여 로깅에 활용
+        return response_text, ("상품추천" if "상품추천" in intent else "일반대화")
 
 
 class OpenSearchService:

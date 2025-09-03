@@ -12,6 +12,7 @@ from main.utils.custom_response import CustomResponse
 from main.constants.error_codes import GeneralErrorCode
 from main.constants.success_codes import GeneralSuccessCode
 from chat.services import ProfileService
+import logging
 
 load_dotenv()
 
@@ -68,6 +69,8 @@ def save_investment_profile(request):
     try:
         data    = json.loads(request.body)
         profile = data.get("investment_profile", {})
+        logger = logging.getLogger(__name__)
+        logger.info("profile: save request", extra={"user_id": data.get("user_id"), "keys": list(profile.keys())})
         try:
             user = User.objects.get(email=data.get("user_id"))
         except User.DoesNotExist:
@@ -79,6 +82,7 @@ def save_investment_profile(request):
                 status=GeneralErrorCode.BAD_REQUEST[2],
             )
         ProfileService.save_profile(user, profile)
+        logger.info("profile: saved", extra={"user_id": data.get("user_id")})
         return CustomResponse(
             is_success=True,
             code=GeneralSuccessCode.OK[0],

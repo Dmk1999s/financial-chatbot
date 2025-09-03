@@ -12,6 +12,7 @@ import re
 import ast
 import json
 from functools import partial, lru_cache
+from typing import Optional
 
 load_dotenv()
 
@@ -45,7 +46,35 @@ class OptimizedOpenAIClient:
 client = OptimizedOpenAIClient()
 fine_tuned_model = "ft:gpt-3.5-turbo-0125:personal::BDpYRjbn"
 store = {}
-SESSION_TEMP_STORE = {}
+
+# 세션 임시 데이터는 캐시에 저장 (기본은 LocMemCache, 추후 Redis로 전환 가능)
+# 키 규약:
+# - 세션 데이터: chat:session:{session_id}  (dict 형태)
+# - 충돌 보류:   chat:conflict_pending      (dict 형태, 기존 동작 유지)
+
+def _session_key(session_id: str) -> str:
+    return f"chat:session:{session_id}"
+
+def get_session_data(session_id: str) -> dict:
+    return cache.get(_session_key(session_id)) or {}
+
+def set_session_data(session_id: str, data: dict) -> None:
+    cache.set(_session_key(session_id), data, timeout=None)
+
+def delete_session_data(session_id: str) -> None:
+    cache.delete(_session_key(session_id))
+
+def get_conflict_pending() -> Optional[dict]:
+    return cache.get("chat:conflict_pending")
+
+def set_conflict_pending_cache(data: dict) -> None:
+    cache.set("chat:conflict_pending", data, timeout=600)
+
+def pop_conflict_pending() -> Optional[dict]:
+    data = cache.get("chat:conflict_pending")
+    if data is not None:
+        cache.delete("chat:conflict_pending")
+    return data
 REQUIRED_KEYS = {
     "age", "risk_tolerance", "income_stability", "income_sources",
     "monthly_income", "investment_horizon", "expected_return", "expected_loss",
@@ -208,17 +237,19 @@ def run_gpt(input_data, config, ai_model):
     session_id = config.get("configurable", {}).get("session_id")
     user_id = config.get("configurable", {}).get("user_id")
 
-    if user_input.strip() in ["네", "아니오"] and "conflict_pending" in SESSION_TEMP_STORE:
-        pending = SESSION_TEMP_STORE.pop("conflict_pending")
+    if user_input.strip() in ["네", "아니오"] and get_conflict_pending() is not None:
+        pending = pop_conflict_pending() or {}
         if user_input.strip() == "네":
             # 충돌 항목을 저장
-            SESSION_TEMP_STORE[session_id].update(pending)
+            current = get_session_data(session_id)
+            current.update(pending)
+            set_session_data(session_id, current)
             return {"output": "프로필이 성공적으로 업데이트되었습니다. 계속 진행할게요."}
         else:
             return {"output": "기존 프로필 정보를 유지합니다. 계속 진행할게요."}
 
     # 현재 누락된 필드 추적
-    current_data = SESSION_TEMP_STORE.get(session_id, {})
+    current_data = get_session_data(session_id)
     missing_keys = [key for key in REQUIRED_KEYS if key not in current_data or current_data[key] is None]
 
     # 기본 프롬프트 + 누락된 키에 대한 질문 유도
@@ -335,18 +366,19 @@ task.py에 제공하는 함수
 """
 def handle_chat(user_input, session_id, user_id=None):
     # 세션 저장소가 없으면 초기화
-    if session_id not in SESSION_TEMP_STORE:
-        SESSION_TEMP_STORE[session_id] = {}
+    # 세션 저장소 초기화는 get/set로 대체
 
     # 사용자 현재 입력에서 우선 필드를 추출하여 반영
     user_extracted = extract_fields_from_natural_response(user_input, session_id)
     if user_extracted:
         valid_fields = {k: v for k, v in user_extracted.items() if k in REQUIRED_KEYS and v is not None}
         if valid_fields:
-            SESSION_TEMP_STORE[session_id].update(valid_fields)
+            current = get_session_data(session_id)
+            current.update(valid_fields)
+            set_session_data(session_id, current)
 
     # 누락된 키(질문해야 할 항목)를 순서대로 계산
-    current_data = SESSION_TEMP_STORE.get(session_id, {})
+    current_data = get_session_data(session_id)
     missing_ordered = [k for k in REQUIRED_KEYS_ORDER if k not in current_data or current_data.get(k) is None]
 
     # 신규 세션이거나 수집 중이면, 다음 하나의 누락 항목만 질문으로 반환
@@ -362,7 +394,7 @@ def handle_chat(user_input, session_id, user_id=None):
     if REQUIRED_KEYS.issubset(current_data.keys()):
         if user_id:
             save_profile_from_gpt(current_data, user_id, session_id)
-        del SESSION_TEMP_STORE[session_id]
+        delete_session_data(session_id)
         return "이제 금융상품을 추천해줄게요!", session_id
 
     # 필요 시 모델 기반 대화로 폴백
@@ -375,13 +407,15 @@ def handle_chat(user_input, session_id, user_id=None):
     extracted_fields = extract_fields_from_natural_response(gpt_reply, session_id)
     if extracted_fields:
         valid_fields = {k: v for k, v in extracted_fields.items() if k in REQUIRED_KEYS and v is not None}
-        SESSION_TEMP_STORE[session_id].update(valid_fields)
+        current = get_session_data(session_id)
+        current.update(valid_fields)
+        set_session_data(session_id, current)
 
-    current_data = SESSION_TEMP_STORE[session_id]
+    current_data = get_session_data(session_id)
     if REQUIRED_KEYS.issubset(current_data.keys()):
         if user_id:
             save_profile_from_gpt(current_data, user_id, session_id)
-        del SESSION_TEMP_STORE[session_id]
+        delete_session_data(session_id)
 
     return gpt_reply, session_id
 

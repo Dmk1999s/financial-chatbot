@@ -13,6 +13,7 @@ from main.utils.custom_response import CustomResponse
 from main.constants.error_codes import GeneralErrorCode
 from main.constants.success_codes import GeneralSuccessCode
 from chat.services import RecommendationService
+import logging
 
 load_dotenv()
 
@@ -69,6 +70,8 @@ def recommend_products(request):
         session_id = body.get("session_id") or get_session_id(body)
         query = (body.get("query") or "").strip()
         top_k = int(body.get("top_k", 3))
+        logger = logging.getLogger(__name__)
+        logger.info("recommend: request", extra={"username": username, "session_id": session_id, "q_len": len(query)})
 
         if not query:
             return CustomResponse(
@@ -79,12 +82,13 @@ def recommend_products(request):
                 status=GeneralErrorCode.BAD_REQUEST[2]
             )
 
-        final_response, _ = RecommendationService.recommend_or_chitchat(
+        final_response, intent = RecommendationService.recommend_or_chitchat(
             username=username,
             session_id=session_id,
             query=query,
             top_k=top_k,
         )
+        logger.info("recommend: response", extra={"username": username, "session_id": session_id, "intent": intent})
 
         return CustomResponse(
             is_success=True,

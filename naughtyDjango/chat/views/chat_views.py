@@ -21,7 +21,7 @@ from main.constants.success_codes import GeneralSuccessCode
 from main.utils.logging_decorator import chat_logger, api_logger
 from chat.gpt_service import get_session_id
 from chat.tasks import process_chat_async
-from chat.gpt_service import SESSION_TEMP_STORE
+from chat.gpt_service import get_session_data, set_session_data, delete_session_data, set_conflict_pending_cache, get_conflict_pending
 from chat.services import ChatService
 
 load_dotenv()
@@ -141,6 +141,11 @@ def chat_with_gpt(request):
         username = body.get("username", "")
         session_id = body.get("session_id") or get_session_id(body)
         message = (body.get("message") or "").strip()
+        logger = logging.getLogger(__name__)
+        logger.info(
+            "chat_with_gpt: received request",
+            extra={"session_id": session_id, "username": username, "msg_len": len(message)}
+        )
         
         if not message:
             return CustomResponse(
@@ -169,6 +174,10 @@ def chat_with_gpt(request):
         quick = ChatService.maybe_quick_reply(message)
         if quick:
             ChatService.save_assistant_message(session_id, username, quick)
+            logger.info(
+                "chat_with_gpt: quick_reply",
+                extra={"session_id": session_id, "username": username}
+            )
             return CustomResponse(
                 is_success=True,
                 code=GeneralSuccessCode.OK[0],
@@ -180,6 +189,10 @@ def chat_with_gpt(request):
         # AI API 호출이 필요한 경우 celery로 비동기 처리
         task = process_chat_async.delay(
             session_id, username, message, ""
+        )
+        logger.info(
+            "chat_with_gpt: task_enqueued",
+            extra={"task_id": task.id, "session_id": session_id, "username": username}
         )
         
         # Task 결과를 폴링하여 충돌 감지
@@ -197,8 +210,12 @@ def chat_with_gpt(request):
                         field = task_result.get("field")
                         value = task_result.get("value")
                         
-                        ChatService.set_conflict_pending(field, value)
+                        set_conflict_pending_cache({field: value})
                         conflict_data = {field: value}
+                        logger.info(
+                            "chat_with_gpt: conflict_detected",
+                            extra={"session_id": session_id, "username": username, "conflict": conflict_data}
+                        )
                         
                         return CustomResponse(
                             is_success=True,
@@ -315,6 +332,8 @@ def chat_with_gpt(request):
 def get_task_status(request, task_id):
     try:
         result = AsyncResult(task_id)
+        logger = logging.getLogger(__name__)
+        logger.info("get_task_status: polled", extra={"task_id": task_id, "ready": result.ready()})
         
         if result.ready():
             if result.successful():
@@ -323,6 +342,7 @@ def get_task_status(request, task_id):
                 if task_result.get("type") == "conflict_detected":
                     field = task_result.get("field")
                     value = task_result.get("value")
+                    logger.info("get_task_status: conflict_detected", extra={"task_id": task_id, "field": field})
                     
                     conflict_data = {field: value}
                     
@@ -349,6 +369,7 @@ def get_task_status(request, task_id):
                     status=GeneralSuccessCode.OK[2],
                 )
             else:
+                logger.warning("get_task_status: task_failed", extra={"task_id": task_id})
                 return CustomResponse(
                     is_success=False,
                     code=GeneralErrorCode.TASK_FAILED[0],
@@ -357,6 +378,7 @@ def get_task_status(request, task_id):
                     status=GeneralErrorCode.TASK_FAILED[2],
                 )
         else:
+            logger.info("get_task_status: pending", extra={"task_id": task_id})
             return CustomResponse(
                 is_success=True,
                 code=GeneralSuccessCode.OK[0],
@@ -434,7 +456,7 @@ def handle_profile_conflict(request):
     session_id = request.data.get('session_id')
     user_choice = request.data.get('choice')  # 'yes' or 'no'
     
-    if not session_id or "conflict_pending" not in SESSION_TEMP_STORE:
+    if not session_id or get_conflict_pending() is None:
         return CustomResponse(
             is_success=False,
             code=GeneralErrorCode.NOT_CONFLICTS[0],
@@ -443,13 +465,14 @@ def handle_profile_conflict(request):
             status=GeneralErrorCode.NOT_CONFLICTS[2],
         )
     
-    pending = SESSION_TEMP_STORE.pop("conflict_pending")
+    from chat.gpt_service import pop_conflict_pending
+    pending = pop_conflict_pending() or {}
     
     if user_choice == 'yes':
-        # 충돌 항목을 세션에 저장
-        if session_id not in SESSION_TEMP_STORE:
-            SESSION_TEMP_STORE[session_id] = {}
-        SESSION_TEMP_STORE[session_id].update(pending)
+        # 충돌 항목을 세션에 저장 (캐시)
+        current = get_session_data(session_id)
+        current.update(pending)
+        set_session_data(session_id, current)
         
         try:
             email = request.data.get('username')
@@ -546,8 +569,7 @@ def end_chat_session(request, session_id):
         from chat.gpt_service import store
         
         # 세션 데이터 정리
-        if session_id in SESSION_TEMP_STORE:
-            del SESSION_TEMP_STORE[session_id]
+        delete_session_data(session_id)
         
         if session_id in store:
             del store[session_id]
