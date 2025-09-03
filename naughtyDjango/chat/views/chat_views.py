@@ -1,40 +1,27 @@
-# chat/views.py
+# chat/views/chat_views.py
 import os
-from chat.management.commands.opensearch_recommender import recommend_with_knn
+import json
+import io
+import logging
 from dotenv import load_dotenv
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
-
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
-from openai import OpenAI
 from rest_framework.decorators import api_view, permission_classes
-import io
-from django.core.management import call_command
-from rest_framework.decorators import api_view
 from rest_framework.permissions import AllowAny
-from chat.gpt_service import handle_chitchat
-from chat.models import ChatMessage
+from celery.result import AsyncResult
+from django.core.management import call_command
 
-from chat.gpt_service import extract_json_from_response
 from chat.models import ChatMessage
 from main.models import User
-from chat.opensearch_client import search_financial_products
-from chat.rag.financial_product_rag import answer_financial_question
 from main.utils.custom_response import CustomResponse
 from main.constants.error_codes import GeneralErrorCode
 from main.constants.success_codes import GeneralSuccessCode
-from chat.gpt_service import handle_chat, get_session_id
-from chat.serializers import ChatRequestSerializer, SaveInvestmentProfileRequestSerializer, RecommendProductRequestSerializer
-from chat.tasks import process_chat_async
-from celery.result import AsyncResult
-import json
-from rest_framework.decorators import api_view
-from main.utils.custom_response import CustomResponse
-from main.constants.success_codes import GeneralSuccessCode
-from .gpt_service import SESSION_TEMP_STORE
-from main.constants.error_codes import GeneralErrorCode
 from main.utils.logging_decorator import chat_logger, api_logger
+from chat.gpt_service import get_session_id
+from chat.tasks import process_chat_async
+from chat.gpt_service import SESSION_TEMP_STORE
 
 load_dotenv()
 
@@ -143,7 +130,6 @@ value_growth, risk_acceptance_level, investment_concern
         )
     }
 )
-
 @api_view(["POST"])
 @permission_classes([AllowAny])
 @csrf_exempt
@@ -173,7 +159,7 @@ def chat_with_gpt(request):
                 status=GeneralErrorCode.MESSAGE_REQUIRED[2],
             )
 
-        # profile 업로드
+        # profile 업로드
         try:
             user = User.objects.get(email=username)
         except User.DoesNotExist:
@@ -248,7 +234,7 @@ def chat_with_gpt(request):
         )
         
         # Task 결과를 폴링하여 충돌 감지
-        max_polling = 20  # 최대 10초 대기 (0.5초 * 20)
+        max_polling = 20
         polling_count = 0
         
         while polling_count < max_polling:
@@ -258,16 +244,11 @@ def chat_with_gpt(request):
                 if result.successful():
                     task_result = result.get()
                     
-                    # 충돌 감지 확인
                     if task_result.get("type") == "conflict_detected":
                         field = task_result.get("field")
                         value = task_result.get("value")
                         
-                        # 충돌 데이터를 SESSION_TEMP_STORE에 저장
-                        from .gpt_service import SESSION_TEMP_STORE
                         SESSION_TEMP_STORE["conflict_pending"] = {field: value}
-                        
-                        # 충돌 데이터 구성
                         conflict_data = {field: value}
                         
                         return CustomResponse(
@@ -283,18 +264,14 @@ def chat_with_gpt(request):
                             status=GeneralSuccessCode.CONFLICTS[2],
                         )
                     else:
-                        # 일반 채팅 응답이면 task_id 반환
                         break
                 else:
-                    # Task 실패
                     break
             
-            # 0.5초 대기 후 다시 폴링
             import time
             time.sleep(0.5)
             polling_count += 1
         
-        # 폴링 완료 후 task_id 반환 (일반 채팅 또는 폴링 실패)
         return CustomResponse(
             is_success=True,
             code=GeneralSuccessCode.OK[0],
@@ -308,8 +285,6 @@ def chat_with_gpt(request):
         )
 
     except Exception as e:
-        # 로그에만 상세 에러 기록
-        import logging
         logger = logging.getLogger(__name__)
         logger.error(f"chat_with_gpt 에러: {str(e)}")
         
@@ -396,12 +371,10 @@ def get_task_status(request, task_id):
             if result.successful():
                 task_result = result.get()
                 
-                # 충돌 감지 확인
                 if task_result.get("type") == "conflict_detected":
                     field = task_result.get("field")
                     value = task_result.get("value")
                     
-                    # 충돌 데이터 구성
                     conflict_data = {field: value}
                     
                     return CustomResponse(
@@ -416,7 +389,6 @@ def get_task_status(request, task_id):
                         status=GeneralSuccessCode.CONFLICTS[2],
                     )
                 
-                # 일반 채팅 응답
                 return CustomResponse(
                     is_success=True,
                     code=GeneralSuccessCode.OK[0],
@@ -445,7 +417,6 @@ def get_task_status(request, task_id):
             )
             
     except Exception as e:
-        import logging
         logger = logging.getLogger(__name__)
         logger.error(f"get_task_status 에러: {str(e)}")
         
@@ -456,7 +427,6 @@ def get_task_status(request, task_id):
             result={},
             status=GeneralErrorCode.TASK_NOT_FOUND[2],
         )
-    
 
 
 @swagger_auto_schema(
@@ -509,7 +479,6 @@ def get_task_status(request, task_id):
         )
     }
 )
-
 @api_view(['POST'])
 def handle_profile_conflict(request):
     """프로필 충돌 시 사용자 선택 처리"""
@@ -532,47 +501,9 @@ def handle_profile_conflict(request):
         if session_id not in SESSION_TEMP_STORE:
             SESSION_TEMP_STORE[session_id] = {}
         SESSION_TEMP_STORE[session_id].update(pending)
-        
-        # DB 업데이트
-        try:
-            # session_id에서 username 추출 (예: "new_ehdgurdusdn@naver.com_8230" -> "ehdgurdusdn@naver.com")
-            username = session_id.split('_')[1] if '_' in session_id else session_id
-            
-            from main.models import User
-            user = User.objects.get(email=username)
-            
-            # 필드 매핑
-            field_mapping = {
-                'age': 'age',
-                'monthly_income': 'income',
-                'risk_tolerance': 'risk_tolerance',
-                'income_stability': 'income_stability',
-                'income_sources': 'income_source',
-                'investment_horizon': 'period',
-                'expected_return': 'expected_income',
-                'expected_loss': 'expected_loss',
-                'investment_purpose': 'purpose',
-                'asset_allocation_type': 'asset_allocation_type',
-                'value_growth': 'value_growth',
-                'risk_acceptance_level': 'risk_acceptance_level',
-                'investment_concern': 'investment_concern',
-            }
-            
-            # DB 업데이트
-            for field, value in pending.items():
-                if field in field_mapping:
-                    db_field = field_mapping[field]
-                    setattr(user, db_field, value)
-            
-            user.save()
-            print(f"DB updated: {pending}")
-            
-        except Exception as e:
-            print(f"DB update failed: {e}")
-        
-        message = "프로필이 성공적으로 업데이트되었습니다."
+        message = "프로필이 성공적으로 업데이트되었습니다. 계속 진행할게요."
     else:
-        message = "기존 프로필 정보를 유지합니다."
+        message = "기존 프로필 정보를 유지합니다. 계속 진행할게요."
     
     return CustomResponse(
         is_success=True,
@@ -581,65 +512,6 @@ def handle_profile_conflict(request):
         result={"message": message},
         status=GeneralSuccessCode.OK[2],
     )
-# ===== 대화 이력 조회 엔드포인트 =====
-@swagger_auto_schema(
-    method="get",
-    operation_description="사용자의 대화 이력을 조회합니다.",
-    responses={200: openapi.Response(
-        "성공",
-        openapi.Schema(
-            type=openapi.TYPE_OBJECT,
-            properties={
-                "isSuccess": openapi.Schema(type=openapi.TYPE_BOOLEAN),
-                "code":      openapi.Schema(type=openapi.TYPE_STRING),
-                "message":   openapi.Schema(type=openapi.TYPE_STRING),
-                "result": openapi.Schema(
-                    type=openapi.TYPE_ARRAY,
-                    items=openapi.Schema(
-                        type=openapi.TYPE_OBJECT,
-                        properties={
-                            "role":         openapi.Schema(type=openapi.TYPE_STRING),
-                            "message":      openapi.Schema(type=openapi.TYPE_STRING),
-                            "timestamp":    openapi.Schema(type=openapi.TYPE_STRING, format="date-time"),
-                            "product_type": openapi.Schema(type=openapi.TYPE_STRING),
-                        },
-                    ),
-                ),
-            },
-        ),
-    )},
-)
-@api_view(["GET"])
-@csrf_exempt
-def get_chat_history(request, username):
-    try:
-        chats = ChatMessage.objects.filter(username=username).order_by("timestamp")
-        history = [
-            {
-                "role":         c.role,
-                "message":      c.message,
-                "timestamp":    c.timestamp,
-                "product_type": c.product_type,
-            }
-            for c in chats
-        ]
-        return CustomResponse(
-            is_success=True,
-            code=GeneralSuccessCode.OK[0],
-            message=GeneralSuccessCode.OK[1],
-            result=history,
-            status=GeneralSuccessCode.OK[2],
-        )
-    except Exception as e:
-        return CustomResponse(
-            is_success=False,
-            code=GeneralErrorCode.INTERNAL_SERVER_ERROR[0],
-            message=GeneralErrorCode.INTERNAL_SERVER_ERROR[1],
-            result={"error": str(e)},
-            status=GeneralErrorCode.INTERNAL_SERVER_ERROR[2],
-        )
-
-
 
 
 @swagger_auto_schema(
@@ -692,7 +564,7 @@ def get_chat_history(request, username):
 def end_chat_session(request, session_id):
     """대화 세션 종료"""
     try:
-        from .gpt_service import SESSION_TEMP_STORE, store
+        from chat.gpt_service import store
         
         # 세션 데이터 정리
         if session_id in SESSION_TEMP_STORE:
@@ -716,266 +588,3 @@ def end_chat_session(request, session_id):
             result={},
             status=GeneralErrorCode.INTERNAL_SERVER_ERROR[2],
         )
-
-
-
-# ===== 투자 프로필 저장 엔드포인트 =====
-# (변경 없음)
-
-
-# ===== 금융상품 추천 엔드포인트 =====
-@swagger_auto_schema(
-    method="post",
-    operation_description="사용자의 질문 의도를 파악하여 금융상품을 추천하거나 일반 대화를 수행합니다",
-    request_body=openapi.Schema(
-        type=openapi.TYPE_OBJECT,
-        properties={
-            "username": openapi.Schema(
-                type=openapi.TYPE_STRING,
-                description="사용자 ID"
-            ),
-            "product_type": openapi.Schema(
-                type=openapi.TYPE_STRING,
-                description="상품 유형 (예금, 적금, 연금, stock 중 하나)"
-            ),
-            "session_id": openapi.Schema(
-                type=openapi.TYPE_STRING,
-                description="세션 ID (선택사항, 없으면 서버에서 생성)"
-            ),
-            "query": openapi.Schema(
-                type=openapi.TYPE_STRING,
-                description="추천을 위한 사용자 질문/요청"
-            ),
-            "top_k": openapi.Schema(
-                type=openapi.TYPE_INTEGER,
-                description="추천할 결과 개수 (기본값: 3)",
-                default=3
-            ),
-            "index": openapi.Schema(
-                type=openapi.TYPE_STRING,
-                description="검색에 사용할 OpenSearch 인덱스 이름 (기본값: 'financial-products')",
-                default="financial-products"
-            ),
-        },
-    ),
-    responses={200: openapi.Response("성공", openapi.Schema(
-        type=openapi.TYPE_OBJECT,
-        properties={"message": openapi.Schema(type=openapi.TYPE_STRING)}
-    ))},
-)
-@api_view(["POST"])
-@permission_classes([AllowAny])
-@csrf_exempt
-def recommend_products(request):
-    """
-    사용자 질문의 의도를 파악하여 '상품추천' 또는 '일반대화'로 분기하여 처리합니다.
-    """
-    try:
-        body = json.loads(request.body)
-        username = body.get("username", "")
-        session_id = body.get("session_id") or get_session_id(body)
-        query = (body.get("query") or "").strip()
-        top_k = int(body.get("top_k", 3))
-
-        if not query:
-            return CustomResponse(
-                is_success=False,
-                code=GeneralErrorCode.BAD_REQUEST[0],
-                message="`query` 파라미터가 필요합니다.",
-                result={},
-                status=GeneralErrorCode.BAD_REQUEST[2]
-            )
-
-        # 1. 의도 분류 (Intent Classification)
-        intent_prompt = f"""
-        사용자의 질문 의도를 "상품추천" 또는 "일반대화" 둘 중 하나로 분류하세요.
-        오직 키워드 하나만 답변해야 합니다.
-
-        질문: "{query}"
-        분류:
-        """
-        openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-        response = openai_client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": intent_prompt}],
-            temperature=0,
-            max_tokens=10
-        )
-        intent = response.choices[0].message.content.strip()
-
-        # 2. 의도에 따라 분기 처리
-        final_response = ""
-        product_type = "general"
-
-        if "상품추천" in intent:
-            final_response = recommend_with_knn(query=query, top_k=top_k)
-            product_type = "recommend"
-        else:  # "일반대화"
-            final_response = handle_chitchat(query)
-
-        # 메시지 저장
-        ChatMessage.objects.create(
-            session_id=session_id,
-            username=username,
-            role="user",
-            message=query,
-        )
-        ChatMessage.objects.create(
-            session_id=session_id,
-            username=username,
-            product_type=product_type,
-            role="assistant",
-            message=final_response,
-        )
-
-        return CustomResponse(
-            is_success=True,
-            code=GeneralSuccessCode.OK[0],
-            message=GeneralSuccessCode.OK[1],
-            result={"response": final_response, "session_id": session_id},
-            status=GeneralSuccessCode.OK[2]
-        )
-
-    except Exception as e:
-        return CustomResponse(
-            is_success=False,
-            code=GeneralErrorCode.INTERNAL_SERVER_ERROR[0],
-            message=GeneralErrorCode.INTERNAL_SERVER_ERROR[1],
-            result={"error": repr(e)},
-            status=GeneralErrorCode.INTERNAL_SERVER_ERROR[2]
-        )
-
-@swagger_auto_schema(
-    method="post",
-    operation_description="사용자의 투자 프로필 정보를 저장합니다.",
-    request_body=openapi.Schema(
-        type=openapi.TYPE_OBJECT,
-        properties={
-            "user_id": openapi.Schema(
-                type=openapi.TYPE_STRING,
-                description="사용자 이메일"
-            ),
-            "investment_profile": openapi.Schema(
-                type=openapi.TYPE_OBJECT,
-                properties={
-                    "risk_tolerance": openapi.Schema(type=openapi.TYPE_STRING),
-                    "age": openapi.Schema(type=openapi.TYPE_INTEGER),
-                    "income_stability": openapi.Schema(type=openapi.TYPE_STRING),
-                    "income_sources": openapi.Schema(type=openapi.TYPE_STRING),
-                    "monthly_income": openapi.Schema(type=openapi.TYPE_INTEGER),
-                    "expected_return": openapi.Schema(type=openapi.TYPE_NUMBER),
-                    "expected_loss": openapi.Schema(type=openapi.TYPE_NUMBER),
-                    "investment_purpose": openapi.Schema(type=openapi.TYPE_STRING),
-                }
-            )
-        },
-        required=["user_id", "investment_profile"]
-    ),
-    responses={
-        200: openapi.Response(
-            "프로필 저장 성공",
-            openapi.Schema(
-                type=openapi.TYPE_OBJECT,
-                properties={
-                    "isSuccess": openapi.Schema(type=openapi.TYPE_BOOLEAN),
-                    "code": openapi.Schema(type=openapi.TYPE_STRING),
-                    "message": openapi.Schema(type=openapi.TYPE_STRING),
-                    "result": openapi.Schema(
-                        type=openapi.TYPE_OBJECT,
-                        properties={
-                            "message": openapi.Schema(type=openapi.TYPE_STRING)
-                        }
-                    )
-                }
-            )
-        )
-    }
-)
-@api_view(["POST"])
-@permission_classes([AllowAny])
-@csrf_exempt
-def save_investment_profile(request):
-    try:
-        data    = json.loads(request.body)
-        profile = data.get("investment_profile", {})
-        try:
-            user = User.objects.get(email=data.get("user_id"))
-        except User.DoesNotExist:
-            return CustomResponse(
-                is_success=False,
-                code=GeneralErrorCode.BAD_REQUEST[0],
-                message="사용자를 찾을 수 없습니다.",
-                result={},
-                status=GeneralErrorCode.BAD_REQUEST[2],
-            )
-        user.risk_tolerance = profile.get("risk_tolerance")
-        user.age = profile.get("age")
-        user.income_stability = profile.get("income_stability")
-        user.income_source = profile.get("income_sources")
-        user.income = profile.get("monthly_income")
-        user.expected_income = profile.get("expected_return")
-        user.expected_loss = profile.get("expected_loss")
-        user.purpose = profile.get("investment_purpose")
-        user.save()
-        return CustomResponse(
-            is_success=True,
-            code=GeneralSuccessCode.OK[0],
-            message=GeneralSuccessCode.OK[1],
-            result={"message": GeneralSuccessCode.OK[1]},
-            status=GeneralSuccessCode.OK[2],
-        )
-    except Exception as e:
-        return CustomResponse(
-            is_success=False,
-            code=GeneralErrorCode.INTERNAL_SERVER_ERROR[0],
-            message=GeneralErrorCode.INTERNAL_SERVER_ERROR[1],
-            result={"error": str(e)},
-            status=GeneralErrorCode.INTERNAL_SERVER_ERROR[2],
-        )
-
-
-# ===== OpenSearch 인덱싱 즉시 실행 =====
-@swagger_auto_schema(
-    method="post",
-    operation_description="OpenSearch에 금융상품 데이터를 인덱싱합니다.",
-    responses={
-        200: openapi.Response(
-            "인덱싱 성공",
-            openapi.Schema(
-                type=openapi.TYPE_OBJECT,
-                properties={
-                    "message": openapi.Schema(
-                        type=openapi.TYPE_STRING,
-                        description="인덱싱 결과 메시지"
-                    )
-                }
-            )
-        ),
-        500: openapi.Response(
-            "인덱싱 실패",
-            openapi.Schema(
-                type=openapi.TYPE_OBJECT,
-                properties={
-                    "error": openapi.Schema(
-                        type=openapi.TYPE_STRING,
-                        description="에러 메시지"
-                    )
-                }
-            )
-        )
-    }
-)
-@api_view(["POST"])
-@permission_classes([AllowAny])
-@csrf_exempt
-def api_index_opensearch(request):
-    try:
-        buf = io.StringIO()
-        call_command('index_to_opensearch', stdout=buf)
-        return JsonResponse(
-            {"message": buf.getvalue()},
-            status=200,
-            json_dumps_params={"ensure_ascii": False}
-        )
-    except Exception as e:
-        return JsonResponse({"error": str(e)}, status=500)
