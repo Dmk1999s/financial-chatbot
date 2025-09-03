@@ -13,6 +13,7 @@ import ast
 import json
 from functools import partial, lru_cache
 from typing import Optional
+from chat.constants.fields import REQUIRED_KEYS, REQUIRED_KEYS_ORDER, QUESTION_KO
 
 load_dotenv()
 
@@ -75,45 +76,7 @@ def pop_conflict_pending() -> Optional[dict]:
     if data is not None:
         cache.delete("chat:conflict_pending")
     return data
-REQUIRED_KEYS = {
-    "age", "risk_tolerance", "income_stability", "income_sources",
-    "monthly_income", "investment_horizon", "expected_return", "expected_loss",
-    "investment_purpose", "asset_allocation_type", "value_growth",
-    "risk_acceptance_level", "investment_concern"
-}
-
-# 질문 순서를 고정하기 위한 키 목록
-REQUIRED_KEYS_ORDER = [
-    "age",
-    "risk_tolerance",
-    "monthly_income",
-    "income_stability",
-    "income_sources",
-    "investment_horizon",
-    "expected_return",
-    "expected_loss",
-    "investment_purpose",
-    "asset_allocation_type",
-    "value_growth",
-    "risk_acceptance_level",
-    "investment_concern",
-]
-
-QUESTION_KO = {
-    "age": "나이를 알려주세요.",
-    "risk_tolerance": "위험 허용 정도는 어느 수준인가요? (낮음/중간/높음)",
-    "monthly_income": "월 소득은 얼마인가요? (원 단위 숫자)",
-    "income_stability": "소득 안정성은 어떤가요? (안정적/불안정)",
-    "income_sources": "주요 소득원은 무엇인가요?",
-    "investment_horizon": "투자 기간은 얼마나 계획하시나요? (일 단위 숫자)",
-    "expected_return": "기대 수익 금액은 어느 정도인가요? (원)",
-    "expected_loss": "허용 가능한 예상 손실 금액은 어느 정도인가요? (원)",
-    "investment_purpose": "투자 목적을 알려주세요.",
-    "asset_allocation_type": "자산 배분 유형(0~4)을 선택해주세요. (0:<10%, 1:10~20%, 2:20~30%, 3:30~40%, 4:40%+)",
-    "value_growth": "가치/성장 중 어느 성향에 더 가깝나요? (0:가치, 1:성장)",
-    "risk_acceptance_level": "위험 수용 수준(1~4)을 선택해주세요.",
-    "investment_concern": "투자 관련 어떤 고민이 있으신가요?",
-}
+# REQUIRED_KEYS / REQUIRED_KEYS_ORDER / QUESTION_KO는 constants/fields.py 참조
 
 finetune_prompt = f"""
 1. 너는 금융상품 추천 어플에 탑재된 챗봇이며, 이름은 '챗봇'이다.
