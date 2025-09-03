@@ -11,6 +11,7 @@ from main.models import User
 from main.utils.custom_response import CustomResponse
 from main.constants.error_codes import GeneralErrorCode
 from main.constants.success_codes import GeneralSuccessCode
+from chat.services import ProfileService
 
 load_dotenv()
 
@@ -77,15 +78,7 @@ def save_investment_profile(request):
                 result={},
                 status=GeneralErrorCode.BAD_REQUEST[2],
             )
-        user.risk_tolerance = profile.get("risk_tolerance")
-        user.age = profile.get("age")
-        user.income_stability = profile.get("income_stability")
-        user.income_source = profile.get("income_sources")
-        user.income = profile.get("monthly_income")
-        user.expected_income = profile.get("expected_return")
-        user.expected_loss = profile.get("expected_loss")
-        user.purpose = profile.get("investment_purpose")
-        user.save()
+        ProfileService.save_profile(user, profile)
         return CustomResponse(
             is_success=True,
             code=GeneralSuccessCode.OK[0],

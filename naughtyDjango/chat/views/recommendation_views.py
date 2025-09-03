@@ -7,15 +7,12 @@ from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
-from openai import OpenAI
 
-from chat.models import ChatMessage
 from chat.gpt_service import get_session_id
-from chat.gpt_service import handle_chitchat
-from chat.management.commands.opensearch_recommender import recommend_with_knn
 from main.utils.custom_response import CustomResponse
 from main.constants.error_codes import GeneralErrorCode
 from main.constants.success_codes import GeneralSuccessCode
+from chat.services import RecommendationService
 
 load_dotenv()
 
@@ -82,46 +79,11 @@ def recommend_products(request):
                 status=GeneralErrorCode.BAD_REQUEST[2]
             )
 
-        # 1. 의도 분류 (Intent Classification)
-        intent_prompt = f"""
-        사용자의 질문 의도를 "상품추천" 또는 "일반대화" 둘 중 하나로 분류하세요.
-        오직 키워드 하나만 답변해야 합니다.
-
-        질문: "{query}"
-        분류:
-        """
-        openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-        response = openai_client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": intent_prompt}],
-            temperature=0,
-            max_tokens=10
-        )
-        intent = response.choices[0].message.content.strip()
-
-        # 2. 의도에 따라 분기 처리
-        final_response = ""
-        product_type = "general"
-
-        if "상품추천" in intent:
-            final_response = recommend_with_knn(query=query, top_k=top_k)
-            product_type = "recommend"
-        else:  # "일반대화"
-            final_response = handle_chitchat(query)
-
-        # 메시지 저장
-        ChatMessage.objects.create(
-            session_id=session_id,
+        final_response, _ = RecommendationService.recommend_or_chitchat(
             username=username,
-            role="user",
-            message=query,
-        )
-        ChatMessage.objects.create(
             session_id=session_id,
-            username=username,
-            product_type=product_type,
-            role="assistant",
-            message=final_response,
+            query=query,
+            top_k=top_k,
         )
 
         return CustomResponse(

@@ -12,6 +12,7 @@ from rest_framework.permissions import AllowAny
 from main.utils.custom_response import CustomResponse
 from main.constants.error_codes import GeneralErrorCode
 from main.constants.success_codes import GeneralSuccessCode
+from chat.services import OpenSearchService
 
 load_dotenv()
 
@@ -66,13 +67,12 @@ load_dotenv()
 @csrf_exempt
 def api_index_opensearch(request):
     try:
-        buf = io.StringIO()
-        call_command('index_to_opensearch', stdout=buf)
+        result_message = OpenSearchService.index_now()
         return CustomResponse(
             is_success=True,
             code=GeneralSuccessCode.OK[0],
             message=GeneralSuccessCode.OK[1],
-            result={"message": buf.getvalue()},
+            result={"message": result_message},
             status=GeneralSuccessCode.OK[2],
         )
     except Exception as e:

@@ -22,6 +22,7 @@ from main.utils.logging_decorator import chat_logger, api_logger
 from chat.gpt_service import get_session_id
 from chat.tasks import process_chat_async
 from chat.gpt_service import SESSION_TEMP_STORE
+from chat.services import ChatService
 
 load_dotenv()
 
@@ -136,19 +137,10 @@ value_growth, risk_acceptance_level, investment_concern
 @chat_logger
 def chat_with_gpt(request):
     try:
-        # 요청 로깅 추가
-        print(f"=== Request from Swagger/curl ===")
-        print(f"Method: {request.method}")
-        print(f"Headers: {dict(request.headers)}")
-        print(f"Body: {request.body}")
-        print(f"Content-Type: {request.content_type}")
-        
         body = json.loads(request.body)
         username = body.get("username", "")
         session_id = body.get("session_id") or get_session_id(body)
         message = (body.get("message") or "").strip()
-        
-        print(f"Parsed data - username: {username}, session_id: {session_id}, message: {message}")
         
         if not message:
             return CustomResponse(
@@ -159,10 +151,9 @@ def chat_with_gpt(request):
                 status=GeneralErrorCode.MESSAGE_REQUIRED[2],
             )
 
-        # profile 업로드
-        try:
-            user = User.objects.get(email=username)
-        except User.DoesNotExist:
+        # user 확인
+        user = ChatService.get_or_validate_user(username)
+        if not user:
             return CustomResponse(
                 is_success=False,
                 code=GeneralErrorCode.USER_NOT_FOUND[0],
@@ -171,60 +162,18 @@ def chat_with_gpt(request):
                 status=GeneralErrorCode.USER_NOT_FOUND[2],
             )
 
-        # profile 업로드 확인
-        if body.get("update_confirm"):
-            field = body.get("field")
-            value = body.get("value")
-            if field and value is not None:
-                setattr(user, field, value)
-                user.save(update_fields=[field])
-                
-                confirm_msg = f"{field} 정보를 {value}으로 업데이트했습니다."
-                ChatMessage.objects.create(
-                    session_id=session_id,
-                    username=username,
-                    product_type="",
-                    role="assistant",
-                    message=confirm_msg,
-                )
-                return CustomResponse(
-                    is_success=True,
-                    code=GeneralSuccessCode.OK[0],
-                    message=GeneralSuccessCode.OK[1],
-                    result={"response": confirm_msg},
-                    status=GeneralSuccessCode.OK[2],
-                )
+        # 사용자 메시지 저장
+        ChatService.save_user_message(session_id, username, message)
 
-        # 메시지 저장
-        ChatMessage.objects.create(
-            session_id=session_id,
-            username=username,
-            product_type="",
-            role="user",
-            message=message,
-        )
-
-        # 간단한 메시지는 빠르게 답변하도록 수정
-        simple_responses = {
-            '안녕': '안녕하세요! 무엇을 도와드릴까요?',
-            '네': '네, 말씀해 주세요.',
-            '아니오': '알겠습니다. 다른 도움이 필요하시면 말씀해 주세요.',
-        }
-        
-        if message.lower() in simple_responses:
-            quick_response = simple_responses[message.lower()]
-            ChatMessage.objects.create(
-                session_id=session_id,
-                username=username,
-                product_type="",
-                role="assistant",
-                message=quick_response,
-            )
+        # 간단한 메시지 빠른 응답
+        quick = ChatService.maybe_quick_reply(message)
+        if quick:
+            ChatService.save_assistant_message(session_id, username, quick)
             return CustomResponse(
                 is_success=True,
                 code=GeneralSuccessCode.OK[0],
                 message=GeneralSuccessCode.OK[1],
-                result={"response": quick_response, "session_id": session_id},
+                result={"response": quick, "session_id": session_id},
                 status=GeneralSuccessCode.OK[2],
             )
 
@@ -248,7 +197,7 @@ def chat_with_gpt(request):
                         field = task_result.get("field")
                         value = task_result.get("value")
                         
-                        SESSION_TEMP_STORE["conflict_pending"] = {field: value}
+                        ChatService.set_conflict_pending(field, value)
                         conflict_data = {field: value}
                         
                         return CustomResponse(
@@ -501,6 +450,36 @@ def handle_profile_conflict(request):
         if session_id not in SESSION_TEMP_STORE:
             SESSION_TEMP_STORE[session_id] = {}
         SESSION_TEMP_STORE[session_id].update(pending)
+        
+        try:
+            email = request.data.get('username')
+            if not email:
+                chat = ChatMessage.objects.filter(session_id=session_id).order_by('-timestamp').first()
+                email = chat.username if chat else None
+            if email:
+                user = User.objects.get(email=email)
+                field_mapping = {
+                    'age': 'age',
+                    'monthly_income': 'income',
+                    'risk_tolerance': 'risk_tolerance',
+                    'income_stability': 'income_stability',
+                    'income_sources': 'income_source',
+                    'investment_horizon': 'period',
+                    'expected_return': 'expected_income',
+                    'expected_loss': 'expected_loss',
+                    'investment_purpose': 'purpose',
+                    'asset_allocation_type': 'asset_allocation_type',
+                    'value_growth': 'value_growth',
+                    'risk_acceptance_level': 'risk_acceptance_level',
+                    'investment_concern': 'investment_concern',
+                }
+                for field, value in pending.items():
+                    if field in field_mapping:
+                        setattr(user, field_mapping[field], value)
+                user.save()
+        except Exception:
+            pass
+        
         message = "프로필이 성공적으로 업데이트되었습니다. 계속 진행할게요."
     else:
         message = "기존 프로필 정보를 유지합니다. 계속 진행할게요."

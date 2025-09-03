@@ -48,9 +48,42 @@ store = {}
 SESSION_TEMP_STORE = {}
 REQUIRED_KEYS = {
     "age", "risk_tolerance", "income_stability", "income_sources",
-    "income", "period", "expected_income", "expected_loss",
-    "purpose", "value_growth",
+    "monthly_income", "investment_horizon", "expected_return", "expected_loss",
+    "investment_purpose", "asset_allocation_type", "value_growth",
     "risk_acceptance_level", "investment_concern"
+}
+
+# 질문 순서를 고정하기 위한 키 목록
+REQUIRED_KEYS_ORDER = [
+    "age",
+    "risk_tolerance",
+    "monthly_income",
+    "income_stability",
+    "income_sources",
+    "investment_horizon",
+    "expected_return",
+    "expected_loss",
+    "investment_purpose",
+    "asset_allocation_type",
+    "value_growth",
+    "risk_acceptance_level",
+    "investment_concern",
+]
+
+QUESTION_KO = {
+    "age": "나이를 알려주세요.",
+    "risk_tolerance": "위험 허용 정도는 어느 수준인가요? (낮음/중간/높음)",
+    "monthly_income": "월 소득은 얼마인가요? (원 단위 숫자)",
+    "income_stability": "소득 안정성은 어떤가요? (안정적/불안정)",
+    "income_sources": "주요 소득원은 무엇인가요?",
+    "investment_horizon": "투자 기간은 얼마나 계획하시나요? (일 단위 숫자)",
+    "expected_return": "기대 수익 금액은 어느 정도인가요? (원)",
+    "expected_loss": "허용 가능한 예상 손실 금액은 어느 정도인가요? (원)",
+    "investment_purpose": "투자 목적을 알려주세요.",
+    "asset_allocation_type": "자산 배분 유형(0~4)을 선택해주세요. (0:<10%, 1:10~20%, 2:20~30%, 3:30~40%, 4:40%+)",
+    "value_growth": "가치/성장 중 어느 성향에 더 가깝나요? (0:가치, 1:성장)",
+    "risk_acceptance_level": "위험 수용 수준(1~4)을 선택해주세요.",
+    "investment_concern": "투자 관련 어떤 고민이 있으신가요?",
 }
 
 finetune_prompt = f"""
@@ -59,13 +92,13 @@ finetune_prompt = f"""
 3. 사용자에게 다음 항목을 순서대로 물어봐야 한다:
 - age: 나이 (정수)
 - risk_tolerance: 위험 허용 정도 (예: 낮음, 중간, 높음)
-- income: 연소득 (정수, 단위는 원)
+- monthly_income: 월 소득 (정수, 단위는 원)
 - income_stability: 소득 안정성 (예: 안정적, 불안정)
 - income_sources: 소득원 (예: 아르바이트, 월급 등)
-- period: 투자 기간 (예: 정수, 단위는 일)
-- expected_income: 기대 수익 (정수, 단위는 원)
+- investment_horizon: 투자 기간 (정수, 단위는 일)
+- expected_return: 기대 수익 (정수, 단위는 원)
 - expected_loss: 예상 손실 (정수, 단위는 원)
-- purpose: 투자 목적 (예: 안정적인 주식 추천)
+- investment_purpose: 투자 목적 (예: 안정적인 주식 추천)
 - asset_allocation_type: 자산 배분 유형 (0~4의 정수. 0: 10% 미만, 1: 10~20%, 2: 20~30%, 3: 30~40%, 4: 40% 이상)
 - value_growth: 가치 또는 성장 (0~1의 정수. 0: 가치, 1: 성장)
 - risk_acceptance_level: 위험 수용 수준 (1~4의 정수. 1: 무조건 투자원금 보존, 2: 이자율 수준의 수익 및 손실 기대, 3: 시장에 비례한 수익 및 손실 기대, 4: 시장수익률 초과 수익 및 손실 기대) 
@@ -80,13 +113,13 @@ gpt_prompt = """
 다음은 JSON 예시야:
 {
   "age": 25,
-  "income": 4000000,
+  "monthly_income": 4000000,
   "income_sources": "아르바이트",
   "income_stability": "불안정",
-  "period": 30,
-  "expected_income": 300000,
+  "investment_horizon": 30,
+  "expected_return": 300000,
   "expected_loss": 100000,
-  "purpose": "단기 수익",
+  "investment_purpose": "단기 수익",
   "asset_allocation_type": 2,
   "value_growth": 1,
   "risk_acceptance_level": 3,
@@ -155,7 +188,7 @@ def extract_fields_from_natural_response(response_text: str, session_id: str) ->
     if age_match:
         fields['age'] = int(age_match.group(1) or age_match.group(2) or age_match.group(3))
     
-    # Income extraction
+    # Monthly income extraction (만원 단위 등을 원 단위로)
     income_match = re.search(r'(\d+)만원|월급.*?(\d+)|수입.*?(\d+)', text_lower)
     if income_match:
         fields['monthly_income'] = int(income_match.group(1) or income_match.group(2) or income_match.group(3)) * 10000
@@ -262,15 +295,35 @@ def save_profile_from_gpt(parsed_data, user_id, session_id):
         user = User.objects.get(email=user_id)  # 기존 유저 조회
         user.age = parsed_data.get("age")
         user.income_stability = parsed_data.get("income_stability")
-        user.expected_loss = parsed_data.get("expected_loss")
-        session_id=session_id,
-        user.risk_tolerance=parsed_data.get("risk_tolerance")
-        user.income_source=parsed_data.get("income_sources")
-        user.income=parsed_data.get("income")
-        user.period=parsed_data.get("period")
-        user.expected_income=parsed_data.get("expected_income")
-        user.expected_loss=parsed_data.get("expected_loss")
-        user.purpose=parsed_data.get("purpose")
+        user.risk_tolerance = parsed_data.get("risk_tolerance")
+        user.income_source = parsed_data.get("income_sources")
+        # map new keys to model fields
+        monthly_income = parsed_data.get("monthly_income")
+        if monthly_income is not None:
+            user.income = monthly_income
+        investment_horizon = parsed_data.get("investment_horizon")
+        if investment_horizon is not None:
+            user.period = investment_horizon
+        expected_return = parsed_data.get("expected_return")
+        if expected_return is not None:
+            user.expected_income = expected_return
+        expected_loss = parsed_data.get("expected_loss")
+        if expected_loss is not None:
+            user.expected_loss = expected_loss
+        investment_purpose = parsed_data.get("investment_purpose")
+        if investment_purpose is not None:
+            user.purpose = investment_purpose
+        
+        # direct mappings for remaining optional fields
+        if parsed_data.get("asset_allocation_type") is not None:
+            user.asset_allocation_type = parsed_data.get("asset_allocation_type")
+        if parsed_data.get("value_growth") is not None:
+            user.value_growth = parsed_data.get("value_growth")
+        if parsed_data.get("risk_acceptance_level") is not None:
+            user.risk_acceptance_level = parsed_data.get("risk_acceptance_level")
+        if parsed_data.get("investment_concern") is not None:
+            user.investment_concern = parsed_data.get("investment_concern")
+        
         user.save()
         print(f"🔍 저장된 user: {user.__dict__}")
     except Exception as e:
@@ -278,48 +331,53 @@ def save_profile_from_gpt(parsed_data, user_id, session_id):
 
 
 """
-views.py에 제공하는 함수
+task.py에 제공하는 함수
 """
 def handle_chat(user_input, session_id, user_id=None):
-    # Fast path for new sessions - use lighter processing
-    if session_id.startswith("new_"):
-        # Initialize session store
-        if session_id not in SESSION_TEMP_STORE:
-            SESSION_TEMP_STORE[session_id] = {}
-        
-        # Use simplified prompt for first interaction
-        simple_prompt = "안녕하세요! 투자 상담을 도와드릴게요. 먼저 나이를 알려주세요."
-        
-        # Extract basic info from user input
-        extracted_fields = extract_fields_from_natural_response(user_input, session_id)
-        valid_fields = {
-            k: v for k, v in extracted_fields.items()
-            if k in REQUIRED_KEYS and v is not None
-        }
-        SESSION_TEMP_STORE[session_id].update(valid_fields)
-        
-        return simple_prompt, session_id
-    
-    # Regular processing for existing sessions
+    # 세션 저장소가 없으면 초기화
+    if session_id not in SESSION_TEMP_STORE:
+        SESSION_TEMP_STORE[session_id] = {}
+
+    # 사용자 현재 입력에서 우선 필드를 추출하여 반영
+    user_extracted = extract_fields_from_natural_response(user_input, session_id)
+    if user_extracted:
+        valid_fields = {k: v for k, v in user_extracted.items() if k in REQUIRED_KEYS and v is not None}
+        if valid_fields:
+            SESSION_TEMP_STORE[session_id].update(valid_fields)
+
+    # 누락된 키(질문해야 할 항목)를 순서대로 계산
+    current_data = SESSION_TEMP_STORE.get(session_id, {})
+    missing_ordered = [k for k in REQUIRED_KEYS_ORDER if k not in current_data or current_data.get(k) is None]
+
+    # 신규 세션이거나 수집 중이면, 다음 하나의 누락 항목만 질문으로 반환
+    if session_id.startswith("new_") or missing_ordered:
+        if missing_ordered:
+            next_key = missing_ordered[0]
+            return QUESTION_KO[next_key], session_id
+        else:
+            # 예외 상황: 일반 인사로 폴백
+            return "안녕하세요! 투자 상담을 도와드릴게요.", session_id
+
+    # 여기까지 왔다면 모든 항목이 채워진 상태
+    if REQUIRED_KEYS.issubset(current_data.keys()):
+        if user_id:
+            save_profile_from_gpt(current_data, user_id, session_id)
+        del SESSION_TEMP_STORE[session_id]
+        return "이제 금융상품을 추천해줄게요!", session_id
+
+    # 필요 시 모델 기반 대화로 폴백
     result = with_message_history.invoke(
         {"input": user_input},
         config={"configurable": {"session_id": session_id}}
     )
-
     gpt_reply = result["output"]
+
     extracted_fields = extract_fields_from_natural_response(gpt_reply, session_id)
-
-    if session_id not in SESSION_TEMP_STORE:
-        SESSION_TEMP_STORE[session_id] = {}
-
-    valid_fields = {
-        k: v for k, v in extracted_fields.items()
-        if k in REQUIRED_KEYS and v is not None
-    }
-    SESSION_TEMP_STORE[session_id].update(valid_fields)
+    if extracted_fields:
+        valid_fields = {k: v for k, v in extracted_fields.items() if k in REQUIRED_KEYS and v is not None}
+        SESSION_TEMP_STORE[session_id].update(valid_fields)
 
     current_data = SESSION_TEMP_STORE[session_id]
-
     if REQUIRED_KEYS.issubset(current_data.keys()):
         if user_id:
             save_profile_from_gpt(current_data, user_id, session_id)
