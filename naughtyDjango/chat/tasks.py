@@ -3,7 +3,9 @@ from openai import OpenAI
 import os
 from .models import ChatMessage
 from main.models import User
-from .gpt_service import extract_json_from_response, handle_chat, get_session_data, set_session_data
+from chat.gpt.parser import extract_json_from_response
+from chat.gpt.flow import handle_chat
+from chat.gpt.session_store import get_session_data, set_session_data
 
 DETECTION_SYSTEM = """
 당신은 '투자 프로필 변경 트리거'를 감지하는 어시스턴트입니다.
