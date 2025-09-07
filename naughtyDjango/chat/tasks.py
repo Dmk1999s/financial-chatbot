@@ -1,6 +1,7 @@
 from celery import shared_task
 from openai import OpenAI
 import os
+import re
 from .models import ChatMessage
 from main.models import User
 from chat.gpt.parser import extract_json_from_response
@@ -43,22 +44,30 @@ def process_chat_async(session_id, username, message, product_type):
     try:
         openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
         
-        # Change detection
+        session_snapshot = get_session_data(session_id) or {}
+        last_asked_key = session_snapshot.get("_last_asked_key")
+        detection_messages = [
+            {"role": "system", "content": DETECTION_SYSTEM},
+        ]
+        if last_asked_key:
+            detection_messages.append({
+                "role": "system",
+                "content": f"현재 질문 중인 필드: {last_asked_key}. 사용자가 수치/금액만 말하더라도 해당 필드로 간주하여 감지하세요.",
+            })
+        detection_messages.append({"role": "user", "content": message})
+
         detect_resp = openai_client.chat.completions.create(
             model="gpt-3.5-turbo",
-            messages=[
-                {"role": "system", "content": DETECTION_SYSTEM},
-                {"role": "user", "content": message},
-            ],
+            messages=detection_messages,
             temperature=0,
-            max_tokens=100
+            max_tokens=200,
         )
         
         trigger = extract_json_from_response(detect_resp.choices[0].message.content)
         
         if isinstance(trigger, dict) and trigger:
             field = trigger.get("field")
-            value = trigger.get("value")
+            value = _normalize_trigger_value(field, trigger.get("value"))
             if field and value is not None:
                 # DB에서 사용자 정보 가져오기
                 try:
@@ -104,6 +113,33 @@ def process_chat_async(session_id, username, message, product_type):
                 except User.DoesNotExist:
                     pass
         
+        # If detection failed, fallback by field type
+        if (not isinstance(trigger, dict) or not trigger):
+            # numeric fields: parse currency
+            if last_asked_key in {"monthly_income", "expected_return", "expected_loss"}:
+                parsed_val = _parse_currency_kr_to_won(message)
+                if parsed_val is not None:
+                    session_data = get_session_data(session_id)
+                    session_data[last_asked_key] = parsed_val
+                    set_session_data(session_id, session_data)
+            # free-text fields: accept meaningful user text to break loops
+            elif last_asked_key in {"investment_purpose", "investment_concern", "income_sources"}:
+                text = (message or "").strip()
+                if text:
+                    trivial = {"네", "아니오", "모름", "몰라", "잘 몰라요"}
+                    looks_numeric = text.replace(",", "").replace(" ", "").isdigit()
+                    concern_signals = ["고민", "걱정", "불안", "궁금", "어렵", "손실", "리스크", "추천", "수익", "손해", "떨어", "하락", "변동", "불확실", "공포"]
+                    seems_concern = any(sig in text for sig in concern_signals) or "?" in text or len(text) >= 6
+                    accept = False
+                    if last_asked_key != "investment_concern":
+                        accept = (text not in trivial) and (not looks_numeric) and len(text) >= 2
+                    else:
+                        accept = (text not in trivial) and (not looks_numeric) and seems_concern
+                    if accept:
+                        session_data = get_session_data(session_id)
+                        session_data[last_asked_key] = text
+                        set_session_data(session_id, session_data)
+
         # Regular chat flow
         gpt_reply, _ = handle_chat(message, session_id, user_id=username)
         
@@ -121,3 +157,92 @@ def process_chat_async(session_id, username, message, product_type):
         import traceback
         traceback.print_exc()
         return {"type": "error", "error": str(e)}
+
+
+def _normalize_trigger_value(field: str, value):
+    """Normalize LLM-detected values to canonical forms (lightweight safety net)."""
+    if value is None:
+        return value
+    text = str(value).strip()
+
+    # income_stability → {안정적, 불안정}
+    if field == "income_stability":
+        if "안정" in text:
+            return "안정적"
+        if "불안" in text:
+            return "불안정"
+        return text
+
+    # risk_tolerance → {낮음, 중간, 높음}
+    if field == "risk_tolerance":
+        if any(k in text for k in ["보수", "안정"]):
+            return "낮음"
+        if any(k in text for k in ["중간", "보통"]):
+            return "중간"
+        if any(k in text for k in ["공격", "적극", "높"]):
+            return "높음"
+        return text
+
+    # Money-like fields → integer won
+    if field in {"monthly_income", "expected_return", "expected_loss"}:
+        parsed = _parse_currency_kr_to_won(text)
+        return parsed if parsed is not None else value
+
+    return value
+
+
+def _parse_currency_kr_to_won(text: str):
+    """Parse KR currency phrases (e.g., '500만원', '2억 3천만 원', '3,000,000원') → int won."""
+    if not text:
+        return None
+    s = str(text)
+
+    # Plain digits with optional commas + '원'
+    m_plain = re.search(r"([0-9][0-9,]{0,12})\s*원", s)
+    if m_plain:
+        try:
+            return int(m_plain.group(1).replace(",", ""))
+        except Exception:
+            pass
+
+    total = 0
+    worked = False
+
+    # 억 단위
+    m_uk = re.search(r"([0-9]+)\s*억", s)
+    if m_uk:
+        total += int(m_uk.group(1)) * 100_000_000
+        worked = True
+
+    # 천만, 백만, 십만, 만 단위
+    m_cheonman = re.search(r"([0-9]+)\s*천\s*만", s)
+    if m_cheonman:
+        total += int(m_cheonman.group(1)) * 10_000_000
+        worked = True
+
+    m_baekman = re.search(r"([0-9]+)\s*백\s*만", s)
+    if m_baekman:
+        total += int(m_baekman.group(1)) * 1_000_000
+        worked = True
+
+    m_shipman = re.search(r"([0-9]+)\s*십\s*만", s)
+    if m_shipman:
+        total += int(m_shipman.group(1)) * 100_000
+        worked = True
+
+    m_man = re.search(r"([0-9]+)\s*만(\s*원)?", s)
+    if m_man:
+        total += int(m_man.group(1)) * 10_000
+        worked = True
+
+    if worked:
+        return total
+
+    # Fallback: extract digits only
+    digits = re.sub(r"[^0-9]", "", s)
+    if digits:
+        try:
+            return int(digits)
+        except Exception:
+            return None
+    return None
