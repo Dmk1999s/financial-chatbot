@@ -21,7 +21,7 @@ from main.constants.success_codes import GeneralSuccessCode
 from main.utils.logging_decorator import chat_logger, api_logger
 from chat.gpt_service import get_session_id
 from chat.tasks import process_chat_async
-from chat.gpt_service import get_session_data, set_session_data, delete_session_data, set_conflict_pending_cache, get_conflict_pending
+from chat.gpt.session_store import get_session_data, set_session_data, delete_session_data, set_conflict_pending_cache, get_conflict_pending
 from chat.services import ChatService
 
 load_dotenv()
@@ -169,6 +169,16 @@ def chat_with_gpt(request):
 
         # 사용자 메시지 저장
         ChatService.save_user_message(session_id, username, message)
+
+        # 세션 스냅샷 로깅 (디버깅용)
+        try:
+            session_snapshot = get_session_data(session_id)
+            # 디버깅용 error 로그
+            logger.error(f"[chat_with_gpt][session={session_id}] snapshot_keys={list(session_snapshot.keys()) if isinstance(session_snapshot, dict) else []}")
+            logger.error(f"[chat_with_gpt][session={session_id}] snapshot={json.dumps(session_snapshot, ensure_ascii=False, default=str)}")
+            print(f"[chat_with_gpt][session={session_id}] snapshot={json.dumps(session_snapshot, ensure_ascii=False, default=str)}")
+        except Exception:
+            pass
 
         # 간단한 메시지 빠른 응답
         quick = ChatService.maybe_quick_reply(message)
@@ -338,7 +348,7 @@ def get_task_status(request, task_id):
         if result.ready():
             if result.successful():
                 task_result = result.get()
-                
+      
                 if task_result.get("type") == "conflict_detected":
                     field = task_result.get("field")
                     value = task_result.get("value")
