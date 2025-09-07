@@ -1,5 +1,6 @@
 from typing import Dict, Optional, Tuple
-from django.contrib.auth.models import User
+from main.models import User
+from chat.models import ChatMessage
 from langchain_core.runnables import RunnableLambda
 from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_community.chat_message_histories import ChatMessageHistory
@@ -91,39 +92,91 @@ with_message_history = RunnableWithMessageHistory(
 
 
 def save_profile_from_gpt(parsed_data, user_id, session_id):
-    """수집 완료된 프로필을 User DB에 저장"""
+    """수집 완료된 프로필을 User DB에 저장 (필드 타입 정규화 포함)"""
+    import re
+    def to_int_maybe(value):
+        if value is None:
+            return None
+        if isinstance(value, int):
+            return value
+        s = str(value)
+        digits = re.sub(r"[^0-9-]", "", s)
+        try:
+            return int(digits) if digits != "" else None
+        except Exception:
+            return None
+
     try:
-        user = User.objects.get(email=user_id)
-        user.age = parsed_data.get("age")
-        user.income_stability = parsed_data.get("income_stability")
-        user.risk_tolerance = parsed_data.get("risk_tolerance")
-        user.income_source = parsed_data.get("income_sources")
-        monthly_income = parsed_data.get("monthly_income")
+        # 1차: 전달된 user_id(email)로 조회
+        try:
+            user = User.objects.get(email=user_id)
+        except Exception:
+            # 2차: 세션의 최근 메시지에서 username(email) 추론
+            recent = ChatMessage.objects.filter(session_id=session_id).order_by('-timestamp').first()
+            if not recent or not recent.username:
+                raise
+            user = User.objects.get(email=recent.username)
+        # 정수형
+        age = to_int_maybe(parsed_data.get("age"))
+        if age is not None:
+            user.age = age
+
+        monthly_income = to_int_maybe(parsed_data.get("monthly_income"))
         if monthly_income is not None:
             user.income = monthly_income
-        investment_horizon = parsed_data.get("investment_horizon")
+
+        investment_horizon = to_int_maybe(parsed_data.get("investment_horizon"))
         if investment_horizon is not None:
             user.period = investment_horizon
-        expected_return = parsed_data.get("expected_return")
+
+        expected_return = to_int_maybe(parsed_data.get("expected_return"))
         if expected_return is not None:
             user.expected_income = expected_return
-        expected_loss = parsed_data.get("expected_loss")
+
+        expected_loss = to_int_maybe(parsed_data.get("expected_loss"))
         if expected_loss is not None:
             user.expected_loss = expected_loss
-        investment_purpose = parsed_data.get("investment_purpose")
-        if investment_purpose is not None:
-            user.purpose = investment_purpose
-        if parsed_data.get("asset_allocation_type") is not None:
-            user.asset_allocation_type = parsed_data.get("asset_allocation_type")
-        if parsed_data.get("value_growth") is not None:
-            user.value_growth = parsed_data.get("value_growth")
-        if parsed_data.get("risk_acceptance_level") is not None:
-            user.risk_acceptance_level = parsed_data.get("risk_acceptance_level")
-        if parsed_data.get("investment_concern") is not None:
-            user.investment_concern = parsed_data.get("investment_concern")
+
+        asset_allocation_type = to_int_maybe(parsed_data.get("asset_allocation_type"))
+        if asset_allocation_type is not None:
+            user.asset_allocation_type = asset_allocation_type
+
+        value_growth = to_int_maybe(parsed_data.get("value_growth"))
+        if value_growth is not None:
+            user.value_growth = value_growth
+
+        risk_acceptance_level = to_int_maybe(parsed_data.get("risk_acceptance_level"))
+        if risk_acceptance_level is not None:
+            user.risk_acceptance_level = risk_acceptance_level
+
+        # 문자열형
+        for key, dest in [
+            ("income_stability", "income_stability"),
+            ("risk_tolerance", "risk_tolerance"),
+            ("income_sources", "income_source"),
+            ("investment_purpose", "purpose"),
+            ("investment_concern", "investment_concern"),
+        ]:
+            val = parsed_data.get(key)
+            if val is not None:
+                setattr(user, dest, str(val))
+
         user.save()
-    except Exception:
-        pass
+        import logging
+        logging.getLogger(__name__).info(
+            "profile_saved",
+            extra={
+                "session_id": session_id,
+                "user_email": user_id,
+                "saved_keys": [
+                    k for k in parsed_data.keys()
+                    if parsed_data.get(k) is not None
+                ],
+            },
+        )
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(f"save_profile_from_gpt failed: {e}")
 
 
 def handle_chat(user_input, session_id, user_id=None):
