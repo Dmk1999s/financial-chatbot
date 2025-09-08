@@ -9,6 +9,10 @@ echo "🧹 Cleaning up existing containers..."
 docker compose down
 docker system prune -f
 
+# 이미지 빌드 (캐시 무효화)
+echo "🔨 Building images with no cache..."
+docker compose build --no-cache web celery
+
 # 메모리 상태 확인
 echo "📊 Memory status:"
 free -h
