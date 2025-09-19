@@ -40,41 +40,56 @@ OPENSEARCH_CLIENT = OpenSearch(
     headers={"Connection": "keep-alive"},
 )
 
-def search_financial_products(
-    query: str,
-    top_k: int = 5,
-    index_name: str = None,
-    product_type: str = None,
-):
-    # (1) 임베딩 생성
+def search_financial_products(query: str, top_k: int = 5, index_name: str = None, product_type: str = None):
     openai = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-    resp = openai.embeddings.create(
-        model="text-embedding-3-small",
-        input=[query]
-    )
+    resp = openai.embeddings.create(model="text-embedding-3-small", input=[query])
     emb = resp.data[0].embedding
 
-    # (2) 싱글턴 클라이언트 사용
     client = OPENSEARCH_CLIENT
-    body = {
-        "size": top_k,
-        "query": {
-            "bool": {
-                **({"filter": [{"term": {"product_type": product_type}}]} if product_type else {}),
+    index = index_name or os.getenv("OPENSEARCH_INDEX")
+
+    # 1) 신형 방식: knn 내부 filter (OpenSearch 2.4+)
+    if product_type:
+        body_knn_with_filter = {
+            "size": top_k,
+            "query": {
                 "knn": {
-                    "embedding": {"vector": emb, "k": top_k}
+                    "embedding": {
+                        "vector": emb,
+                        "k": top_k,
+                        "filter": {"term": {"product_type": product_type}}
+                    }
                 }
             }
         }
-    }
-    result = client.search(index=index_name or os.getenv("OPENSEARCH_INDEX"), body=body)
+        try:
+            result = client.search(index=index, body=body_knn_with_filter)
+        except Exception:
+            # 2) 구형 호환: bool.must(knn) + bool.filter(term)
+            body_bool_must_knn = {
+                "size": top_k,
+                "query": {
+                    "bool": {
+                        "filter": [{"term": {"product_type": product_type}}],
+                        "must": [
+                            {"knn": {"embedding": {"vector": emb, "k": top_k}}}
+                        ]
+                    }
+                }
+            }
+            result = client.search(index=index, body=body_bool_must_knn)
+    else:
+        # 필터 없을 때는 기본 knn
+        body = {"size": top_k, "query": {"knn": {"embedding": {"vector": emb, "k": top_k}}}}
+        result = client.search(index=index, body=body)
 
     return [
         {
             "id": hit["_id"],
             "score": hit["_score"],
-            "text": hit["_source"]["text"].replace("\n", " "),
-            "type": hit["_source"]["product_type"],
+            "text": hit["_source"].get("text", "").replace("\n", " "),
+            "type": hit["_source"].get("product_type"),
+            "table": hit["_source"].get("table"),
         }
-        for hit in result["hits"]["hits"]
+        for hit in result.get("hits", {}).get("hits", [])
     ]

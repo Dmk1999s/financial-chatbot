@@ -38,5 +38,3 @@ class OptimizedOpenAIClient:
 
 # 모듈 단일 인스턴스
 client = OptimizedOpenAIClient()
-
-

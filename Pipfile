@@ -18,7 +18,6 @@ faiss-cpu = "*"
 utils = "*"
 constants = "*"
 opensearch-py = "*"
-langchain-openai = "*"
 requests-aws4auth = "*"
 boto3 = "*"
 celery = "*"
@@ -27,6 +26,9 @@ django-redis = "*"
 pymysql = "*"
 channels = "*"
 channels-redis = "*"
+lark = "*"
+langchain = "*"
+langchain-openai = "*"
 
 [dev-packages]
 

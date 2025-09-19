@@ -37,7 +37,7 @@ schema_view = get_schema_view(
 )
 
 urlpatterns = [
-    #path('admin/', admin.site.urls),
+    path('admin/', admin.site.urls),
     path('chats/', include('chat.urls')),
 
     # 헬스체킹용 urlk

@@ -1,3 +1,4 @@
+from main.models import User
 from django.core.cache import cache
 from typing import Optional
 
@@ -33,3 +34,41 @@ def pop_conflict_pending() -> Optional[dict]:
     return data
 
 
+def load_user_profile_to_session(user_id: str, session_id: str):
+    """
+    대화 시작 시, DB에 저장된 사용자 프로필을
+    세션 캐시로 미리 불러옵니다.
+    """
+    try:
+        user = User.objects.get(email=user_id)
+        session_data = get_session_data(session_id)
+
+        # User 모델 필드와 세션 키를 매핑
+        profile_data = {
+            "age": user.age,
+            "risk_tolerance": user.risk_tolerance,
+            "income_stability": user.income_stability,
+            "income_sources": user.income_source,
+            "monthly_income": user.income,
+            "investment_horizon": user.period,
+            "expected_return": user.expected_income,
+            "expected_loss": user.expected_loss,
+            "investment_purpose": user.purpose,
+            "value_growth": user.value_growth,
+            "risk_acceptance_level": user.risk_acceptance_level,
+            "investment_concern": user.investment_concern,
+            "asset_allocation_type": user.asset_allocation_type
+        }
+
+        # 값이 있는 항목만 세션 데이터에 업데이트
+        for key, value in profile_data.items():
+            if value is not None:
+                session_data[key] = value
+
+        set_session_data(session_id, session_data)
+        print(f"✅ Profile loaded for session {session_id}")
+
+    except User.DoesNotExist:
+        print(f"ℹ️ New user session {session_id}, starting with empty profile.")
+    except Exception as e:
+        print(f"❗️Error loading profile for session {session_id}: {e}")

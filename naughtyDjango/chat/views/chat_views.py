@@ -12,7 +12,6 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
 from celery.result import AsyncResult
 from django.core.management import call_command
-
 from chat.models import ChatMessage
 from main.models import User
 from main.utils.custom_response import CustomResponse
@@ -21,7 +20,7 @@ from main.constants.success_codes import GeneralSuccessCode
 from main.utils.logging_decorator import chat_logger, api_logger
 from chat.gpt_service import get_session_id
 from chat.tasks import process_chat_async
-from chat.gpt.session_store import get_session_data, set_session_data, delete_session_data, set_conflict_pending_cache, get_conflict_pending
+from chat.gpt.session_store import get_session_data, set_session_data, delete_session_data, set_conflict_pending_cache, get_conflict_pending, pop_conflict_pending
 from chat.services import ChatService
 
 load_dotenv()
@@ -475,7 +474,6 @@ def handle_profile_conflict(request):
             status=GeneralErrorCode.NOT_CONFLICTS[2],
         )
     
-    from chat.gpt_service import pop_conflict_pending
     pending = pop_conflict_pending() or {}
     
     if user_choice == 'yes':

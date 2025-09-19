@@ -69,7 +69,6 @@ def recommend_products(request):
         username = body.get("username", "")
         session_id = body.get("session_id") or get_session_id(body)
         query = (body.get("query") or "").strip()
-        top_k = int(body.get("top_k", 3))
         logger = logging.getLogger(__name__)
         logger.info("recommend: request", extra={"username": username, "session_id": session_id, "q_len": len(query)})
 
@@ -86,7 +85,6 @@ def recommend_products(request):
             username=username,
             session_id=session_id,
             query=query,
-            top_k=top_k,
         )
         logger.info("recommend: response", extra={"username": username, "session_id": session_id, "intent": intent})
 

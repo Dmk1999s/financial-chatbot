@@ -1,20 +1,15 @@
 # chat/services.py
 import os
-import json
 import io
 from typing import Dict, Optional, Tuple
-
+from chat.rag.retriever_chain import run_rag_chain
 from openai import OpenAI
 from django.core.management import call_command
-
 from chat.models import ChatMessage
-from chat.gpt_service import get_session_id
-from main.utils.custom_response import CustomResponse
-from main.constants.error_codes import GeneralErrorCode
-from main.constants.success_codes import GeneralSuccessCode
 from main.models import User
-from chat.management.commands.opensearch_recommender import recommend_with_knn
 from chat.gpt_service import handle_chitchat
+from chat.gpt.session_store import set_conflict_pending_cache
+from chat.rag.agent import run_agent
 import logging
 
 
@@ -61,7 +56,7 @@ class ChatService:
 
     @staticmethod
     def set_conflict_pending(field: str, value):
-        SESSION_TEMP_STORE["conflict_pending"] = {field: value}
+        set_conflict_pending_cache({field: value})
 
 
 class ProfileService:
@@ -79,43 +74,19 @@ class ProfileService:
         user.purpose = profile.get("investment_purpose")
         user.save()
 
-
 class RecommendationService:
-    """Routes recommendation vs smalltalk and persists messages."""
-
     @staticmethod
-    def classify_intent(query: str) -> str:
-        prompt = f"""
-        사용자의 질문 의도를 "상품추천" 또는 "일반대화" 둘 중 하나로 분류하세요.
-        오직 키워드 하나만 답변해야 합니다.
+    def recommend_or_chitchat(username: str, session_id: str, query: str) -> Tuple[str, str]:
+        # run_agent를 호출할 때 session_id를 함께 전달합니다.
+        response_text = run_agent(query=query, session_id=session_id)
 
-        질문: "{query}"
-        분류:
-        """
-        client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-        resp = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0,
-            max_tokens=10,
-        )
-        return (resp.choices[0].message.content or "").strip()
+        intent = "agent_processed"
+        product_type = "recommend_or_general"
 
-    @staticmethod
-    def recommend_or_chitchat(username: str, session_id: str, query: str, top_k: int) -> Tuple[str, str]:
-        intent = RecommendationService.classify_intent(query)
-        if "상품추천" in intent:
-            response_text = recommend_with_knn(query=query, top_k=top_k)
-            product_type = "recommend"
-        else:
-            response_text = handle_chitchat(query)
-            product_type = "general"
-        # persist messages
         ChatMessage.objects.create(session_id=session_id, username=username, role="user", message=query)
         ChatMessage.objects.create(session_id=session_id, username=username, product_type=product_type, role="assistant", message=response_text)
-        # intent도 함께 반환하여 로깅에 활용
-        return response_text, ("상품추천" if "상품추천" in intent else "일반대화")
 
+        return response_text, intent
 
 class OpenSearchService:
     """Utility wrapper for OpenSearch indexing."""

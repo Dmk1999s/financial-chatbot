@@ -1,3 +1,5 @@
+#chat/tasks.py
+
 from celery import shared_task
 from openai import OpenAI
 import os
@@ -15,11 +17,12 @@ DETECTION_SYSTEM = """
 감지할 필드:
 - age: 나이 (예: "25살", "30세", "나이 25" 등)
 - monthly_income: 월 수입 (예: "300만원", "월급 500만원" 등)
+- annual_income: 연 수입 (예: "3600만원", "연봉 4000만원" 등)
 - risk_tolerance: 위험 허용 정도 (예: "보수적", "적극적", "중간" 등)
 - income_stability: 소득 안정성 (예: "안정적", "불안정" 등)
 - income_sources: 소득원 (예: "월급", "아르바이트" 등)
 - investment_horizon: 투자 기간 (예: "1년", "3개월" 등)
-- expected_return: 기대 수익 (예: "10%", "100만원" 등)
+- expected_income: 기대 수익 (예: "10%", "100만원" 등)
 - expected_loss: 예상 손실 (예: "5%", "50만원" 등)
 - investment_purpose: 투자 목적 (예: "안정적 수익", "성장" 등)
 - asset_allocation_type: 자산 배분 유형 (0-4)
@@ -33,19 +36,22 @@ DETECTION_SYSTEM = """
 예시:
 - "저는 25살이에요" → {"field": "age", "value": 25}
 - "월급이 300만원이에요" → {"field": "monthly_income", "value": 3000000}
+- "연봉으로 5000만원 정도 벌어요" → {"field": "annual_income", "value": 50000000}
 - "보수적으로 투자하고 싶어요" → {"field": "risk_tolerance", "value": "낮음"}
 
 변경 의도가 없으면 {} 만 반환하세요.
 """
+
 
 @shared_task
 def process_chat_async(session_id, username, message, product_type):
     """Async task for heavy GPT processing"""
     try:
         openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-        
+
         session_snapshot = get_session_data(session_id) or {}
         last_asked_key = session_snapshot.get("_last_asked_key")
+
         detection_messages = [
             {"role": "system", "content": DETECTION_SYSTEM},
         ]
@@ -62,18 +68,19 @@ def process_chat_async(session_id, username, message, product_type):
             temperature=0,
             max_tokens=200,
         )
-        
+
         trigger = extract_json_from_response(detect_resp.choices[0].message.content)
-        
+
         if isinstance(trigger, dict) and trigger:
             field = trigger.get("field")
             value = _normalize_trigger_value(field, trigger.get("value"))
+
             if field and value is not None:
                 # DB에서 사용자 정보 가져오기
                 try:
                     user = User.objects.get(email=username)
                     current_data = {}
-                    
+
                     # DB 필드와 매핑
                     field_mapping = {
                         'age': user.age,
@@ -82,7 +89,7 @@ def process_chat_async(session_id, username, message, product_type):
                         'income_stability': user.income_stability,
                         'income_sources': user.income_source,
                         'investment_horizon': user.period,
-                        'expected_return': user.expected_income,
+                        'expected_income': user.expected_income,
                         'expected_loss': user.expected_loss,
                         'investment_purpose': user.purpose,
                         'asset_allocation_type': user.asset_allocation_type,
@@ -90,10 +97,10 @@ def process_chat_async(session_id, username, message, product_type):
                         'risk_acceptance_level': user.risk_acceptance_level,
                         'investment_concern': user.investment_concern,
                     }
-                    
+
                     # 현재 DB 값 가져오기
                     current_value = field_mapping.get(field)
-                    
+
                     # 충돌 확인 (DB 값이 있고, 새 값과 다를 때)
                     if current_value is not None and current_value != value:
                         return {
@@ -109,10 +116,10 @@ def process_chat_async(session_id, username, message, product_type):
                         session_data = get_session_data(session_id)
                         session_data[field] = value
                         set_session_data(session_id, session_data)
-                
+
                 except User.DoesNotExist:
                     pass
-        
+
         # If detection failed, fallback by field type
         if (not isinstance(trigger, dict) or not trigger):
             # numeric fields: parse currency
@@ -130,11 +137,13 @@ def process_chat_async(session_id, username, message, product_type):
                     looks_numeric = text.replace(",", "").replace(" ", "").isdigit()
                     concern_signals = ["고민", "걱정", "불안", "궁금", "어렵", "손실", "리스크", "추천", "수익", "손해", "떨어", "하락", "변동", "불확실", "공포"]
                     seems_concern = any(sig in text for sig in concern_signals) or "?" in text or len(text) >= 6
+
                     accept = False
                     if last_asked_key != "investment_concern":
                         accept = (text not in trivial) and (not looks_numeric) and len(text) >= 2
                     else:
                         accept = (text not in trivial) and (not looks_numeric) and seems_concern
+
                     if accept:
                         session_data = get_session_data(session_id)
                         session_data[last_asked_key] = text
@@ -142,7 +151,7 @@ def process_chat_async(session_id, username, message, product_type):
 
         # Regular chat flow
         gpt_reply, _ = handle_chat(message, session_id, user_id=username)
-        
+
         ChatMessage.objects.create(
             session_id=session_id,
             username=username,
@@ -150,9 +159,9 @@ def process_chat_async(session_id, username, message, product_type):
             role="assistant",
             message=gpt_reply,
         )
-        
+
         return {"type": "chat_response", "response": gpt_reply}
-        
+
     except Exception as e:
         import traceback
         traceback.print_exc()
@@ -163,6 +172,7 @@ def _normalize_trigger_value(field: str, value):
     """Normalize LLM-detected values to canonical forms (lightweight safety net)."""
     if value is None:
         return value
+
     text = str(value).strip()
 
     # income_stability → {안정적, 불안정}
