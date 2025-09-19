@@ -140,34 +140,36 @@ except Exception as e:
     SELF_QUERY_RETRIEVER = None
 
 def run_rag_chain(query: str) -> str:
-    """SelfQueryRetriever 기반 RAG + (필요 시) 강제 product_type 필터 폴백"""
     try:
-        # 1) 질의에서 상품유형을 먼저 고정 감지
         pt = _detect_product_type_ko(query)
 
-        # 2) 유형이 감지되면: OpenSearch k-NN + term filter로 '예/적/연'에 한정 검색
-        if pt in {"예금", "적금", "연금", "국내주식", "해외주식"}:
-            hits = search_financial_products(query=query, top_k=5, product_type=pt)  # ← 필터 확정
+        if pt in {"예금", "적금", "연금", "국내주식", "해외주식", "주식"}:
+            target_types = ["국내주식", "해외주식"] if pt == "주식" else [pt]
+            hits = []
+            for t in target_types:
+                _hits = search_financial_products(query=query, top_k=5, product_type=t) or []
+                for h in _hits:
+                    h.setdefault("product_type", t)
+                hits.extend(_hits)
             if hits:
-                # hits → LLM 요약
                 context = json.dumps(hits, ensure_ascii=False, indent=2)
                 prompt = f"""당신은 금융상담사입니다.
 아래 검색 결과를 바탕으로 사용자의 질문에 답하세요.
 - 항목별로 핵심만 2~3문장씩 정리
 - '왜 이 상품이 적합한지'를 간단히 근거 제시
 - 숫자는 원문에 있는 값만 사용(추정 금지)
-[상품유형] {pt}
 [검색결과]
 {context}
 [사용자질문]
 {query}"""
                 chat = OpenAI(api_key=os.getenv('OPENAI_API_KEY')).chat.completions.create(
-                    model="gpt-3.5-turbo", temperature=0.2, max_tokens=1200,
-                    messages=[{"role":"user","content":prompt}]
+                    model="gpt-3.5-turbo",
+                    temperature=0.2,
+                    max_tokens=1200,
+                    messages=[{"role": "user", "content": prompt}]
                 )
                 return chat.choices[0].message.content
 
-        # 3) 폴백: 기존 SelfQueryRetriever 경로
         if SELF_QUERY_RETRIEVER is None:
             return "죄송합니다, 현재 추천 시스템에 문제가 발생하여 답변할 수 없습니다."
 
@@ -209,7 +211,8 @@ def run_rag_chain(query: str) -> str:
         chat = OpenAI(api_key=os.getenv('OPENAI_API_KEY')).chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": final_prompt}],
-            temperature=0.2, max_tokens=2000,
+            temperature=0.2,
+            max_tokens=2000,
         )
         return chat.choices[0].message.content
 
@@ -240,9 +243,14 @@ def create_self_query_rag_tool():
 
 def _detect_product_type_ko(query: str) -> str | None:
     q = query.lower()
-    if "연금" in q: return "연금"
-    if "예금" in q: return "예금"
-    if "적금" in q: return "적금"
+    if "연금" in q:
+        return "연금"
+    if "예금" in q:
+        return "예금"
+    if "적금" in q:
+        return "적금"
+    if "주식" in q:
+        return "주식"
     for pat, val in _PT_SYNONYMS.items():
         if re.search(pat, q):
             return val

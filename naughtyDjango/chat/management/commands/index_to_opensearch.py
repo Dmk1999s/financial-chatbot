@@ -143,13 +143,15 @@ class Command(BaseCommand):
                             "product_type": {"type": "keyword"},
                             "table": {"type": "keyword"},
                             "embedding": {"type": "knn_vector", "dimension": 1536},
-                            # 숫자 필드들의 타입을 float로 명시
                             "per": {"type": "float"},
                             "pbr": {"type": "float"},
                             "eps": {"type": "float"},
                             "perx": {"type": "float"},
                             "pbrx": {"type": "float"},
-                            "epsx": {"type": "float"}
+                            "epsx": {"type": "float"},
+                            "avg_prft_rate": {"type": "float"},
+                            "btrm_prft_rate1": {"type": "float"},
+                            "guar_rate": {"type": "float"}
                         }
                     }
                 }
@@ -184,7 +186,7 @@ class Command(BaseCommand):
 
                 # (1) 각 row → 텍스트
                 texts = [
-                    "\n".join(f"{col}: {val}" for col, val in row.items())
+                    _readable_text(row, tbl, korean)
                     for row in rows
                 ]
 
