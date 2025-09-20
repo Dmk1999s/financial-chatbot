@@ -4,11 +4,13 @@ from celery import shared_task
 from openai import OpenAI
 import os
 import re
+import io
 from .models import ChatMessage
 from main.models import User
 from chat.gpt.parser import extract_json_from_response
 from chat.gpt.flow import handle_chat
 from chat.gpt.session_store import get_session_data, set_session_data
+from django.core.management import call_command
 
 DETECTION_SYSTEM = """
 당신은 '투자 프로필 변경 트리거'를 감지하는 어시스턴트입니다.
@@ -167,6 +169,12 @@ def process_chat_async(session_id, username, message, product_type):
         traceback.print_exc()
         return {"type": "error", "error": str(e)}
 
+@shared_task(name="index_financial_products")
+def index_financial_products():
+    """Run 'python manage.py index_to_opensearch' in background."""
+    buf = io.StringIO()
+    call_command("index_to_opensearch", stdout=buf)
+    return buf.getvalue()
 
 def _normalize_trigger_value(field: str, value):
     """Normalize LLM-detected values to canonical forms (lightweight safety net)."""

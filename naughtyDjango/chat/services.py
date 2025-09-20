@@ -11,7 +11,8 @@ from chat.gpt_service import handle_chitchat
 from chat.gpt.session_store import set_conflict_pending_cache
 from chat.rag.agent import run_agent
 import logging
-
+from celery.result import AsyncResult
+from chat.tasks import index_financial_products
 
 class ChatService:
     """Encapsulates business logic for chat interactions."""
@@ -92,7 +93,18 @@ class OpenSearchService:
     """Utility wrapper for OpenSearch indexing."""
 
     @staticmethod
-    def index_now() -> str:
-        buf = io.StringIO()
-        call_command('index_to_opensearch', stdout=buf)
-        return buf.getvalue()
+    def index_async() -> str:
+        """Enqueue indexing as a Celery task and return task_id."""
+        async_result = index_financial_products.delay()
+        return async_result.id
+
+    @staticmethod
+    def index_status(task_id: str) -> dict:
+        """Query celery task status/result."""
+        r = AsyncResult(task_id)
+        data = {"task_id": task_id, "state": r.state}
+        if r.failed():
+            data["error"] = str(r.result)
+        elif r.successful():
+            data["result"] = r.result  # index_to_opensearch 출력
+        return data

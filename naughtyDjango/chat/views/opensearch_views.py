@@ -67,13 +67,13 @@ load_dotenv()
 @csrf_exempt
 def api_index_opensearch(request):
     try:
-        result_message = OpenSearchService.index_now()
+        task_id = OpenSearchService.index_async()
         return CustomResponse(
             is_success=True,
             code=GeneralSuccessCode.OK[0],
-            message=GeneralSuccessCode.OK[1],
-            result={"message": result_message},
-            status=GeneralSuccessCode.OK[2],
+            message="인덱싱 작업이 큐에 등록되었습니다.",
+            result={"task_id": task_id},
+            status=202,  # 비동기 처리: Accepted
         )
     except Exception as e:
         return CustomResponse(
