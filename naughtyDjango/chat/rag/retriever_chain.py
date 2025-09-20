@@ -6,6 +6,7 @@ from openai import OpenAI
 from dotenv import load_dotenv
 import logging
 import re
+from typing import Optional
 
 from langchain.chains.query_constructor.base import AttributeInfo
 from langchain.retrievers.self_query.base import SelfQueryRetriever
@@ -241,7 +242,7 @@ def create_self_query_rag_tool():
         """
     )
 
-def _detect_product_type_ko(query: str) -> str | None:
+def _detect_product_type_ko(query: str) -> Optional[str]:
     q = query.lower()
     if "연금" in q:
         return "연금"
