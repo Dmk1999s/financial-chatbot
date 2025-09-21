@@ -36,7 +36,7 @@ load_dotenv()
                 type=openapi.TYPE_STRING,
                 description="세션 ID (선택사항, 없으면 서버에서 생성)"
             ),
-            "query": openapi.Schema(
+            "message": openapi.Schema(
                 type=openapi.TYPE_STRING,
                 description="추천을 위한 사용자 질문/요청"
             ),
@@ -68,15 +68,15 @@ def recommend_products(request):
         body = json.loads(request.body)
         username = body.get("username", "")
         session_id = body.get("session_id") or get_session_id(body)
-        query = (body.get("query") or "").strip()
+        message = (body.get("message") or "").strip()
         logger = logging.getLogger(__name__)
-        logger.info("recommend: request", extra={"username": username, "session_id": session_id, "q_len": len(query)})
+        logger.info("recommend: request", extra={"username": username, "session_id": session_id, "q_len": len(message)})
 
-        if not query:
+        if not message:
             return CustomResponse(
                 is_success=False,
                 code=GeneralErrorCode.BAD_REQUEST[0],
-                message="`query` 파라미터가 필요합니다.",
+                message="`message` 파라미터가 필요합니다.",
                 result={},
                 status=GeneralErrorCode.BAD_REQUEST[2]
             )
@@ -84,7 +84,7 @@ def recommend_products(request):
         final_response, intent = RecommendationService.recommend_or_chitchat(
             username=username,
             session_id=session_id,
-            query=query,
+            query=message,
         )
         logger.info("recommend: response", extra={"username": username, "session_id": session_id, "intent": intent})
 
