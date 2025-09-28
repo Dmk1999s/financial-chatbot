@@ -43,7 +43,7 @@ value_growth, risk_acceptance_level, investment_concern
 # ===== GPT 채팅 엔드포인트 =====
 @swagger_auto_schema(
     method="post",
-    operation_description="세션 ID를 기반으로 AI에게 질문을 보냅니다. task_id를 기반으로 task/ api를 호출해 ai의 대답을 가져올 수 있습니다.",
+    operation_description="챗봇이 사용자의 프로필 정보를 수집합니다.",
     request_body=openapi.Schema(
         type=openapi.TYPE_OBJECT,
         properties={
