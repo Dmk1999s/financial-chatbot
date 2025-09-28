@@ -28,8 +28,8 @@ class WebsiteTestUser(HttpUser):
                             headers={"Content-Type": "application/json"},
                             catch_response=True) as response:
             print(f"Response status: {response.status_code}, URL: /chats/chat/")
-            print(f"Response text: {response.text[:200]}")
-            if response.status_code == 200:
+            print(f"Response text: {response.text[:202]}")
+            if response.status_code == 202:
                 response.success()
             elif response.status_code == 500:
                 response.failure(f"Server Error: {response.status_code}")
