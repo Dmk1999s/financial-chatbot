@@ -35,11 +35,6 @@ class WebsiteTestUser(HttpUser):
                 response.failure(f"Unexpected status: {response.status_code} - {response.text[:100]}")
 
     @task(1)
-     def recommend_test(self):
-         """추천 API 테스트 - 임시 비활성화"""
-         pass
-
-    @task(1)
     def health_check(self):
         """헬스체크 - 가장 간단한 요청"""
         with self.client.get("/", catch_response=True) as response:
