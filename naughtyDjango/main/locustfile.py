@@ -4,8 +4,10 @@ import uuid
 
 
 class WebsiteTestUser(HttpUser):
-    wait_time = between(5, 10)  # 대기 시간 더 증가
+    wait_time = between(1, 3)  # 대기 시간을 줄여서 더 많은 요청 생성
     host = "http://localhost:8000"
+    connection_timeout = 10.0  # 연결 타임아웃 설정
+    network_timeout = 10.0  # 네트워크 타임아웃 설정
 
     def on_start(self):
         """각 사용자 세션 시작 시 실행"""

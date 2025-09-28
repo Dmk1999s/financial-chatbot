@@ -192,6 +192,7 @@ DATABASES = {
         'PASSWORD': os.getenv('DB_PASSWORD'),
         'HOST': os.getenv('DB_HOST'),
         'PORT': os.getenv('LOCAL_PORT'),
+        'CONN_MAX_AGE': 300,  # 커넥션 유지 시간을 5분으로 증가
         'OPTIONS': {
             'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
             #'auth_plugin': 'caching_sha2_password',  # 필수 추가[2][6]
@@ -204,6 +205,7 @@ DATABASES = {
         'PASSWORD': os.getenv('DB_PASSWORD'),
         'HOST': os.getenv('DB_HOST'),
         'PORT': os.getenv('LOCAL_PORT'),
+        'CONN_MAX_AGE': 300,  # 커넥션 유지 시간을 5분으로 증가
         'OPTIONS': {
             'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
         }
@@ -297,7 +299,7 @@ CACHES = {
         'OPTIONS': {
             'CLIENT_CLASS': 'django_redis.client.DefaultClient',
             'CONNECTION_POOL_KWARGS': {
-                'max_connections': 50,
+                'max_connections': 100,  # Redis 커넥션 풀 크기 증가
                 'retry_on_timeout': True,
                 'socket_keepalive': True,
                 'socket_keepalive_options': {},
