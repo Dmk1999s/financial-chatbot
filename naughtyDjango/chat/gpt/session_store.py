@@ -3,6 +3,10 @@ from django.core.cache import cache
 from typing import Optional
 
 
+SESSION_TTL = 3600  # 1시간
+def set_session_data(session_id: str, data: dict) -> None:
+    cache.set(_session_key(session_id), data, timeout=SESSION_TTL)
+
 def _session_key(session_id: str) -> str:
     return f"chat:session:{session_id}"
 

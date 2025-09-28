@@ -264,3 +264,16 @@ def _parse_currency_kr_to_won(text: str):
         except Exception:
             return None
     return None
+
+@shared_task(name="process_recommend_async")
+def process_recommend_async(session_id, username, message, product_type="", top_k=3, index="financial-products"):
+    try:
+        from chat.services import RecommendationService
+        final_response, intent = RecommendationService.recommend_or_chitchat(
+            username=username,
+            session_id=session_id,
+            query=message,  # 내부 시그니처 유지
+        )
+        return {"type": "chat_response", "response": final_response, "intent": intent}
+    except Exception as e:
+        return {"type": "error", "error": str(e)}

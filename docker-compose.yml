@@ -45,9 +45,9 @@ services:
     deploy:
       resources:
         limits:
-          memory: 512M
+          memory: 1G  # 메모리 제한 증가
         reservations:
-          memory: 256M
+          memory: 512M  # 예약 메모리 증가
 
   celery:
     container_name: celery

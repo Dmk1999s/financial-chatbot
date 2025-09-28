@@ -29,6 +29,8 @@ channels-redis = "*"
 lark = "*"
 langchain = "*"
 langchain-openai = "*"
+langsmith = "*"
+locust = "*"
 
 [dev-packages]
 

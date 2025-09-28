@@ -10,4 +10,8 @@ python manage.py collectstatic --noinput
 export PYTHONPATH=/app/naughtyDjango
 
 # gunicorn 실행
-exec gunicorn main.wsgi:application --bind 0.0.0.0:8000
+exec gunicorn main.wsgi:application \
+    --bind 0.0.0.0:8000 \
+    --workers 4 \
+    --worker-connections 1000 \
+    --timeout 30

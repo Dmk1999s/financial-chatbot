@@ -22,4 +22,4 @@ class SaveInvestmentProfileRequestSerializer(serializers.Serializer):
     investment_profile = InvestmentProfileSerializer()
 
 class RecommendProductRequestSerializer(serializers.Serializer):
-    query = serializers.CharField()
+    message = serializers.CharField()
