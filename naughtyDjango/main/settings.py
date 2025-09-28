@@ -115,6 +115,47 @@ CORS_EXPOSE_HEADERS = [
     'x-csrftoken',
 ]
 
+# 로깅 설정 (성능 모니터링용)
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {process:d} {thread:d} {message}',
+            'style': '{',
+        },
+        'simple': {
+            'format': '{levelname} {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'file': {
+            'level': 'INFO',
+            'class': 'logging.FileHandler',
+            'filename': os.path.join(BASE_DIR, 'performance.log'),
+            'formatter': 'verbose',
+        },
+        'console': {
+            'level': 'WARNING',
+            'class': 'logging.StreamHandler',
+            'formatter': 'simple',
+        },
+    },
+    'loggers': {
+        'django.db.backends': {
+            'level': 'WARNING',
+            'handlers': ['console'],
+            'propagate': False,
+        },
+        'chat.views': {
+            'level': 'INFO',
+            'handlers': ['file', 'console'],
+            'propagate': False,
+        },
+    },
+}
+
 CSRF_TRUSTED_ORIGINS = [
     'https://nauhtydjango.cloud',
 ]
@@ -240,6 +281,14 @@ CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = 'UTC'
 
+# Celery 성능 관련 설정
+CELERY_WORKER_PREFETCH_MULTIPLIER = 1  # 작업자당 prefetch 제한
+CELERY_TASK_ACKS_LATE = True  # 작업 완료 후 ACK
+CELERY_WORKER_MAX_TASKS_PER_CHILD = 50  # 작업자 재시작 주기
+CELERY_TASK_TIME_LIMIT = 300  # 작업 시간 제한 (5분)
+CELERY_TASK_SOFT_TIME_LIMIT = 240  # 소프트 시간 제한 (4분)
+CELERY_RESULT_EXPIRES = 3600  # 결과 캐시 만료 시간 (1시간)
+
 # Cache Configuration
 CACHES = {
     'default': {
@@ -247,6 +296,12 @@ CACHES = {
         'LOCATION': f'redis://{REDIS_HOST}:{REDIS_PORT}/1',
         'OPTIONS': {
             'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+            'CONNECTION_POOL_KWARGS': {
+                'max_connections': 50,
+                'retry_on_timeout': True,
+                'socket_keepalive': True,
+                'socket_keepalive_options': {},
+            },
         },
     }
 }
